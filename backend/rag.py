@@ -1,0 +1,110 @@
+"""RAG pipeline: FAISS retrieval + LLM answer generation.
+
+Index *building* lives in crawler/build_index.py; this module only *loads*
+the already-built FAISS index and reads chunk metadata, read-only, at
+startup (see CLAUDE.md on why these stay separate — under Railway, each
+backend worker/replica loads the index independently).
+"""
+
+import os
+from pathlib import Path
+
+import faiss
+import numpy as np
+from openai import OpenAI
+
+from app.db import SessionLocal
+from app.models import Chunk
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+EMBEDDING_MODEL = "text-embedding-3-small"
+CHAT_MODEL = "gpt-4o-mini"
+TOP_K = 5
+
+# Product positioning (see CLAUDE.md): translate Amtsdeutsch into plain
+# language with actionable steps. The context is always German; the answer
+# is written in the user's language.
+SYSTEM_PROMPT = """\
+Du bist ein Assistent, der deutsches Behördendeutsch in einfache Sprache übersetzt \
+(Schwerpunkte: Bürgergeld/Grundsicherung, Kindergeld, Zuständigkeiten von Behörden).
+
+Regeln:
+- Antworte AUSSCHLIESSLICH auf Basis des gegebenen Kontexts. Wenn der Kontext die \
+Antwort nicht enthält, sage das ehrlich und rate nicht.
+- Schreibe in einfacher Sprache (Niveau B1): kurze Sätze, keine Amtssprache. \
+Nenne amtliche Begriffe trotzdem beim Namen (z. B. "Bedarfsgemeinschaft"), aber \
+erkläre sie sofort in einfachen Worten.
+- Mache die Antwort handlungsorientiert. Wenn es zur Frage passt, nenne: \
+Wer hat Anspruch? Was muss man konkret tun? Welche Behörde ist zuständig \
+(z. B. Familienkasse für Kindergeld, Jobcenter für Bürgergeld/Grundsicherung)?
+- Hinweis zur Übergangszeit: "Bürgergeld" heißt seit dem 1. Juli 2026 \
+"Grundsicherungsgeld" (Neue Grundsicherung). Beide Begriffe meinen dieselbe Leistung; \
+erwähne das kurz, wenn die Frage eine der beiden Bezeichnungen verwendet.
+- Der Kontext ist immer auf Deutsch. Antworte in der vom Nutzer gewünschten Sprache \
+(steht am Ende der Nachricht). Amtliche Begriffe und Behördennamen bleiben auf \
+Deutsch, mit kurzer Erklärung in der Antwortsprache.\
+"""
+
+# The language directive lives at the END of the user message, not only in the
+# system prompt: with an all-German prompt+context, gpt-4o-mini otherwise
+# drifts back to German (observed with language="en").
+LANGUAGE_NAMES = {
+    "de": "Deutsch",
+    "en": "English",
+    "tr": "Türkçe",
+    "ar": "العربية",
+    "uk": "українська",
+    "ru": "русский",
+    "pl": "polski",
+}
+
+
+def language_directive(language: str) -> str:
+    name = LANGUAGE_NAMES.get(language, language)
+    if language == "de":
+        return "Antworte auf Deutsch."
+    return (
+        f"IMPORTANT: Write your entire answer in {name} (language code: {language}), "
+        f"NOT in German. Keep official German terms in German, each with a short "
+        f"explanation in {name}."
+    )
+
+
+def resolve_faiss_path() -> Path:
+    raw = os.environ.get("FAISS_INDEX_PATH", "data/faiss_index.bin")
+    return (REPO_ROOT / raw).resolve()
+
+
+class RAGPipeline:
+    def __init__(self):
+        self.client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+        self.index = faiss.read_index(str(resolve_faiss_path()))
+
+    def query(self, message: str, language: str = "de", topic: str | None = None):
+        embed_response = self.client.embeddings.create(model=EMBEDDING_MODEL, input=message)
+        query_vector = np.array([embed_response.data[0].embedding], dtype="float32")
+        faiss.normalize_L2(query_vector)
+
+        _, ids = self.index.search(query_vector, TOP_K)
+        hit_ids = [int(i) for i in ids[0] if i != -1]
+
+        session = SessionLocal()
+        chunks_by_id = {c.id: c for c in session.query(Chunk).filter(Chunk.id.in_(hit_ids)).all()}
+        session.close()
+        ordered_chunks = [chunks_by_id[i] for i in hit_ids if i in chunks_by_id]
+
+        context_text = "\n\n".join(f"[{c.title}]\n{c.content}" for c in ordered_chunks)
+        completion = self.client.chat.completions.create(
+            model=CHAT_MODEL,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": f"Kontext:\n{context_text}\n\nFrage: {message}\n\n{language_directive(language)}",
+                },
+            ],
+        )
+        answer = completion.choices[0].message.content
+
+        sources = [{"title": c.title, "url": c.url} for c in ordered_chunks]
+        return answer, sources
