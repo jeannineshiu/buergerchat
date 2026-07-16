@@ -18,14 +18,17 @@ crawler/.venv/
 backend/.env
 crawler/.env
 
-# FAISS / data
+# FAISS / data (index + metadata built by crawler/build_index.py; crawl output is regenerable)
+data/
 backend/data/
+crawler/output/
 *.index
 
 # Editor / OS
 .DS_Store
 .vscode/
 .idea/
+.claude/settings.local.json
 
 # Logs
 *.log
