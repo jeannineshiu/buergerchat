@@ -14,7 +14,8 @@ def resolve_database_url() -> str:
     be launched from is a trap (bit the crawler scripts twice already).
     Postgres URLs pass through unchanged.
     """
-    url = os.environ.get("DATABASE_URL", f"{SQLITE_PREFIX}data/metadata.db")
+    data_dir = os.environ.get("DATA_DIR", "data")
+    url = os.environ.get("DATABASE_URL", f"{SQLITE_PREFIX}{data_dir}/metadata.db")
     if url.startswith(SQLITE_PREFIX):
         raw_path = url[len(SQLITE_PREFIX):]
         abs_path = (REPO_ROOT / raw_path).resolve()

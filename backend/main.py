@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -20,9 +21,12 @@ app = FastAPI(
     version="0.1.0",
 )
 
+# In production, FRONTEND_ORIGIN carries the deployed frontend's origin
+# (e.g. https://frontend-….up.railway.app).
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost:3000"]
+    + ([os.environ["FRONTEND_ORIGIN"]] if os.environ.get("FRONTEND_ORIGIN") else []),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

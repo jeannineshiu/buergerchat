@@ -75,8 +75,14 @@ def language_directive(language: str) -> str:
 
 
 def resolve_faiss_path() -> Path:
-    raw = os.environ.get("FAISS_INDEX_PATH", "data/faiss_index.bin")
-    return (REPO_ROOT / raw).resolve()
+    # DATA_DIR points at the built artifacts (on Railway: the volume mount,
+    # /data). Relative values are anchored to the repo root per the path
+    # convention; absolute ones pass through (REPO_ROOT / "/data" == "/data").
+    explicit = os.environ.get("FAISS_INDEX_PATH")
+    if explicit:
+        return (REPO_ROOT / explicit).resolve()
+    data_dir = os.environ.get("DATA_DIR", "data")
+    return (REPO_ROOT / data_dir / "faiss_index.bin").resolve()
 
 
 class RAGPipeline:

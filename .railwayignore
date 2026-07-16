@@ -1,0 +1,7 @@
+# Raw crawl output — only the built index is needed, and that lives on the
+# Railway volume (see DATA_DIR), not in the image.
+crawler/output/
+
+# Built FAISS index + sqlite metadata: served from the volume, never baked
+# into images.
+data/

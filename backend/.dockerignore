@@ -1,0 +1,7 @@
+# Never bake secrets into the image — env vars come from Railway/docker run.
+.env
+
+__pycache__/
+*.pyc
+Dockerfile
+railway.toml

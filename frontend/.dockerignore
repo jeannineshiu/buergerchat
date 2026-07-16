@@ -1,0 +1,7 @@
+# Host artifacts must not leak into the build context: node_modules contains
+# platform-native binaries (darwin vs. alpine) and .next stale build output.
+node_modules/
+.next/
+.env*
+Dockerfile
+railway.toml

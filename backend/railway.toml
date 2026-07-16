@@ -1,0 +1,11 @@
+# Railway config for the backend service (config-as-code is per-service —
+# set this service's Root Directory to `backend` in the Railway dashboard).
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 120
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
