@@ -58,6 +58,7 @@ LANGUAGE_NAMES = {
     "en": "English",
     "tr": "Türkçe",
     "ar": "العربية",
+    "fa": "فارسی",
     "uk": "українська",
     "ru": "русский",
     "pl": "polski",
