@@ -1,0 +1,31 @@
+# Node / Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.env*.local
+
+# Python
+backend/__pycache__/
+backend/**/__pycache__/
+backend/.venv/
+backend/venv/
+crawler/__pycache__/
+crawler/.venv/
+*.pyc
+
+# Env files
+.env
+backend/.env
+crawler/.env
+
+# FAISS / data
+backend/data/
+*.index
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
+
+# Logs
+*.log
