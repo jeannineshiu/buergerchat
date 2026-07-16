@@ -127,7 +127,8 @@ def classify_topic(site: Site, url: str) -> str | None:
 
 def url_allowed(site: Site, url: str) -> bool:
     parsed = urlparse(url)
-    if parsed.netloc not in (site.host, site.host.removeprefix("www.")):
+    # Hostnames are case-insensitive — bamf.de's <base> tag says www.BAMF.de.
+    if parsed.netloc.lower() not in (site.host, site.host.removeprefix("www.")):
         return False
     if any(parsed.path.startswith(prefix) for prefix in site.url_exclude):
         return False
@@ -159,11 +160,15 @@ def fetch_sitemap_urls(client: httpx.Client, sitemap_url: str) -> list[str]:
     return [el.text for el in root.findall("sm:url/sm:loc", XML_NS) if el.text]
 
 
-def extract_page(html: str) -> tuple[str, str, list[str]]:
-    """Returns (title, content, same-page links) — links feed the BFS mode."""
+def extract_page(html: str) -> tuple[str, str, list[str], str | None]:
+    """Returns (title, content, same-page links, <base href>) — links feed the
+    BFS mode. GSB sites (bamf.de) emit relative hrefs against a <base> tag;
+    joining them against the page URL doubles the path."""
     soup = BeautifulSoup(html, "html.parser")
 
     links = [a.get("href") for a in soup.find_all("a", href=True)]
+    base_tag = soup.find("base")
+    base_href = base_tag.get("href") if base_tag else None
 
     for tag in soup(["script", "style", "nav", "footer", "header", "noscript", "form", "aside"]):
         tag.decompose()
@@ -188,7 +193,7 @@ def extract_page(html: str) -> tuple[str, str, list[str]]:
     main = soup.find("main") or soup.body or soup
     content = " ".join(main.get_text(separator=" ", strip=True).split())
 
-    return title, content, links
+    return title, content, links, base_href
 
 
 def load_crawled_urls(output_path: str) -> set[str]:
@@ -242,7 +247,7 @@ def crawl_sitemap_site(client: httpx.Client, site: Site, out_file, done: set[str
     for i, url in enumerate(urls, start=1):
         html = fetch_page(client, url)
         if html:
-            title, content, _ = extract_page(html)
+            title, content, _, _ = extract_page(html)
             if len(content) >= MIN_CONTENT_CHARS:
                 write_record(out_file, site, url, title, content)
                 written += 1
@@ -265,7 +270,7 @@ def crawl_bfs_site(client: httpx.Client, site: Site, out_file, done: set[str], l
         if html is None:
             continue
 
-        title, content, links = extract_page(html)
+        title, content, links, base_href = extract_page(html)
         if url not in done and len(content) >= MIN_CONTENT_CHARS and classify_topic(site, url):
             write_record(out_file, site, url, title, content)
             written += 1
@@ -273,8 +278,11 @@ def crawl_bfs_site(client: httpx.Client, site: Site, out_file, done: set[str], l
 
         if depth >= site.bfs_max_depth:
             continue
+        resolve_root = urljoin(url, base_href) if base_href else url
         for href in links:
-            absolute = urljoin(url, href).split("#")[0].split(";jsessionid")[0]
+            absolute = urljoin(resolve_root, href).split("#")[0].split(";jsessionid")[0]
+            parsed_abs = urlparse(absolute)
+            absolute = absolute.replace(parsed_abs.netloc, parsed_abs.netloc.lower(), 1)
             parsed = urlparse(absolute)
             if (
                 absolute not in seen
