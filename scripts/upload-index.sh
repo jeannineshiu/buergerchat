@@ -51,10 +51,11 @@ volume_flag=()
 
 for name in "${ARTIFACTS[@]}"; do
     echo "==> uploading $name ($(du -h "$DATA_DIR/$name" | cut -f1 | tr -d ' '))"
+    # --volume goes between `files` and the subcommand (CLI requirement).
     # The ${arr[@]+...} guard keeps `set -u` happy when the array is empty
     # (empty-array expansion is an unbound-variable error in bash < 4.4,
     # including macOS's /bin/bash 3.2).
-    railway volume files upload ${volume_flag[@]+"${volume_flag[@]}"} --overwrite "$DATA_DIR/$name" "/$name"
+    railway volume files ${volume_flag[@]+"${volume_flag[@]}"} upload --overwrite "$DATA_DIR/$name" "/$name"
 done
 
 echo "==> upload complete"
