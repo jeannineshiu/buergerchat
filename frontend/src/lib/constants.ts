@@ -12,6 +12,7 @@ export const LANGUAGES = [
   { code: "zh-Hans", label: "简体中文" },
   { code: "vi", label: "Tiếng Việt" },
   { code: "id", label: "Bahasa Indonesia" },
+  { code: "ko", label: "한국어" },
 ] as const;
 
 export interface StarterPrompt {

@@ -68,6 +68,7 @@ LANGUAGE_NAMES = {
     "zh-Hans": "简体中文 (Simplified Chinese)",
     "vi": "Tiếng Việt",
     "id": "Bahasa Indonesia",
+    "ko": "한국어 (Korean)",
 }
 
 
