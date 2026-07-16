@@ -1,4 +1,5 @@
 import type { Source } from "@/lib/api";
+import { Markdown } from "@/components/Markdown";
 
 export interface Message {
   role: "user" | "assistant";
@@ -7,51 +8,97 @@ export interface Message {
   topic?: string;
 }
 
+function hostnameOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
 // Shown whenever an answer touches Bürgergeld — pinned in the UI rather than
 // left to the model, which doesn't reliably mention the rename on its own.
 function BuergergeldNotice() {
   return (
-    <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
-      Hinweis: Seit dem 1. Juli 2026 heißt „Bürgergeld“ offiziell
-      „Grundsicherungsgeld“ (Neue Grundsicherung). Es handelt sich um dieselbe Leistung.
+    <div className="mt-4 flex gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[13px] leading-relaxed text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+      <svg
+        className="mt-0.5 h-4 w-4 shrink-0"
+        viewBox="0 0 20 20"
+        fill="currentColor"
+        aria-hidden="true"
+      >
+        <path
+          fillRule="evenodd"
+          d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-7-4a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM9 9a.75.75 0 0 0 0 1.5h.253a.25.25 0 0 1 .244.304l-.459 2.066A1.75 1.75 0 0 0 10.747 15H11a.75.75 0 0 0 0-1.5h-.253a.25.25 0 0 1-.244-.304l.459-2.066A1.75 1.75 0 0 0 9.253 9H9Z"
+          clipRule="evenodd"
+        />
+      </svg>
+      <span>
+        Seit dem 1. Juli 2026 heißt „Bürgergeld“ offiziell „Grundsicherungsgeld“
+        (Neue Grundsicherung). Es handelt sich um dieselbe Leistung.
+      </span>
+    </div>
+  );
+}
+
+function SourceList({ sources }: { sources: Source[] }) {
+  return (
+    <div className="mt-4">
+      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+        Quellen
+      </p>
+      <ol className="flex flex-col gap-1.5">
+        {sources.map((source, i) => (
+          <li key={i}>
+            <a
+              href={source.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group flex items-start gap-2.5 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 transition hover:border-blue-300 hover:bg-blue-50 dark:border-zinc-700 dark:bg-zinc-800/60 dark:hover:border-blue-500/50 dark:hover:bg-blue-500/10"
+            >
+              <span
+                className="mt-0.5 grid h-4.5 w-4.5 shrink-0 place-items-center rounded bg-zinc-200 text-[10px] font-semibold text-zinc-600 group-hover:bg-blue-100 group-hover:text-blue-700 dark:bg-zinc-700 dark:text-zinc-300 dark:group-hover:bg-blue-500/20 dark:group-hover:text-blue-300"
+                aria-hidden="true"
+              >
+                {i + 1}
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-[13px] font-medium leading-snug text-zinc-700 group-hover:text-blue-800 dark:text-zinc-200 dark:group-hover:text-blue-300">
+                  {source.title}
+                </span>
+                <span className="block text-[11px] text-zinc-400 dark:text-zinc-500">
+                  {hostnameOf(source.url)}
+                </span>
+              </span>
+            </a>
+          </li>
+        ))}
+      </ol>
     </div>
   );
 }
 
 export function ChatMessage({ message }: { message: Message }) {
-  const isUser = message.role === "user";
+  if (message.role === "user") {
+    return (
+      <div className="flex justify-end">
+        <div className="max-w-[85%] rounded-2xl rounded-br-md bg-blue-600 px-4 py-2.5 text-[15px] leading-relaxed text-white shadow-sm">
+          <p dir="auto" className="whitespace-pre-wrap break-words">
+            {message.content}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
-      <div
-        className={`max-w-[85%] rounded-2xl px-4 py-3 ${
-          isUser
-            ? "bg-blue-600 text-white"
-            : "bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-100"
-        }`}
-      >
-        <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.content}</p>
+    <div className="flex justify-start">
+      <div className="max-w-[95%] rounded-2xl rounded-bl-md border border-zinc-200 bg-white px-4 py-3.5 text-[15px] text-zinc-800 shadow-sm sm:max-w-[88%] dark:border-zinc-700/80 dark:bg-zinc-900 dark:text-zinc-100">
+        <Markdown>{message.content}</Markdown>
 
-        {!isUser && message.topic === "buergergeld" && <BuergergeldNotice />}
-
-        {!isUser && message.sources && message.sources.length > 0 && (
-          <div className="mt-3 border-t border-gray-300 pt-2 dark:border-gray-700">
-            <p className="mb-1 text-xs font-medium text-gray-500 dark:text-gray-400">Quellen</p>
-            <ul className="space-y-1">
-              {message.sources.map((source, i) => (
-                <li key={i}>
-                  <a
-                    href={source.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs text-blue-600 hover:underline dark:text-blue-400"
-                  >
-                    {source.title}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </div>
+        {message.topic === "buergergeld" && <BuergergeldNotice />}
+        {message.sources && message.sources.length > 0 && (
+          <SourceList sources={message.sources} />
         )}
       </div>
     </div>
