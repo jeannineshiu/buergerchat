@@ -20,7 +20,9 @@ from behoerde import BehoerdeResult
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 EMBEDDING_MODEL = "text-embedding-3-small"
-CHAT_MODEL = "gpt-4o-mini"
+# gpt-4o-mini code-switched into German on zh-Hans answers; gpt-5.4-mini
+# (A/B-tested 2026-07) keeps all 12 languages clean at similar latency.
+CHAT_MODEL = os.environ.get("CHAT_MODEL", "gpt-5.4-mini")
 TOP_K = 5
 
 # Product positioning (see CLAUDE.md): translate Amtsdeutsch into plain
