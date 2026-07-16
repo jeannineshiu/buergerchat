@@ -9,10 +9,11 @@ from typing import Literal
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from behoerde import BehoerdeFinder
-from rag import RAGPipeline
+from rag import IndexNotReadyError, RAGPipeline
 from router import DEFAULT_TOPIC, QueryRouter
 
 app = FastAPI(
@@ -57,6 +58,14 @@ class ChatResponse(BaseModel):
     answer: str
     sources: list[Source]
     topic: str
+
+
+@app.exception_handler(IndexNotReadyError)
+def index_not_ready(request, exc):
+    return JSONResponse(
+        status_code=503,
+        content={"error": "Index not yet available. Please try again later."},
+    )
 
 
 @app.post("/chat", response_model=ChatResponse)
@@ -118,7 +127,11 @@ def chat(request: ChatRequest) -> ChatResponse:
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok"}
+    # Always 200 so the Railway healthcheck passes while the /data volume
+    # is still empty; "degraded" tells operators the index is missing.
+    if rag_pipeline.load():
+        return {"status": "ok", "index": "loaded"}
+    return {"status": "degraded", "index": "missing"}
 
 
 @app.get("/")

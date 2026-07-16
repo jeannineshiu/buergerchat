@@ -7,6 +7,7 @@ backend worker/replica loads the index independently).
 """
 
 import os
+import threading
 from pathlib import Path
 
 import faiss
@@ -85,10 +86,39 @@ def resolve_faiss_path() -> Path:
     return (REPO_ROOT / data_dir / "faiss_index.bin").resolve()
 
 
+class IndexNotReadyError(Exception):
+    """The FAISS index file is not (yet) present — e.g. a fresh Railway
+    deploy whose /data volume hasn't been populated."""
+
+
 class RAGPipeline:
     def __init__(self):
         self.client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
-        self.index = faiss.read_index(str(resolve_faiss_path()))
+        # Lazy: the index is loaded on first use (or explicit load()), not at
+        # import time, so the app can start before the volume is populated.
+        self.index = None
+        self._load_lock = threading.Lock()
+
+    @property
+    def index_loaded(self) -> bool:
+        return self.index is not None
+
+    def load(self) -> bool:
+        """Load the FAISS index if the file exists. Returns True when the
+        index is available (already loaded or loaded now)."""
+        if self.index is not None:
+            return True
+        with self._load_lock:
+            if self.index is None:
+                path = resolve_faiss_path()
+                if not path.exists():
+                    return False
+                self.index = faiss.read_index(str(path))
+        return True
+
+    def _ensure_loaded(self):
+        if not self.load():
+            raise IndexNotReadyError(str(resolve_faiss_path()))
 
     def query(
         self,
@@ -100,6 +130,7 @@ class RAGPipeline:
         authority_missing: bool = False,
         history: list[dict] | None = None,
     ):
+        self._ensure_loaded()
         embed_response = self.client.embeddings.create(model=EMBEDDING_MODEL, input=message)
         query_vector = np.array([embed_response.data[0].embedding], dtype="float32")
         faiss.normalize_L2(query_vector)
