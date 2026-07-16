@@ -28,7 +28,8 @@ export default function Home() {
     setError(null);
 
     try {
-      const response = await sendChatMessage(trimmed, language);
+      const history = messages.map(({ role, content }) => ({ role, content }));
+      const response = await sendChatMessage(trimmed, language, history);
       setMessages((prev) => [
         ...prev,
         {

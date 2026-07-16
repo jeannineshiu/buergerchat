@@ -9,13 +9,22 @@ export interface ChatResponse {
   topic: string;
 }
 
+export interface HistoryMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-export async function sendChatMessage(message: string, language: string): Promise<ChatResponse> {
+export async function sendChatMessage(
+  message: string,
+  language: string,
+  history: HistoryMessage[] = [],
+): Promise<ChatResponse> {
   const response = await fetch(`${API_URL}/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message, language }),
+    body: JSON.stringify({ message, language, history }),
   });
 
   if (!response.ok) {

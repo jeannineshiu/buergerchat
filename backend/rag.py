@@ -15,6 +15,7 @@ from openai import OpenAI
 
 from app.db import SessionLocal
 from app.models import Chunk
+from behoerde import BehoerdeResult
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 EMBEDDING_MODEL = "text-embedding-3-small"
@@ -34,6 +35,9 @@ Antwort nicht enthält, sage das ehrlich und rate nicht.
 - Schreibe in einfacher Sprache (Niveau B1): kurze Sätze, keine Amtssprache. \
 Nenne amtliche Begriffe trotzdem beim Namen (z. B. "Bedarfsgemeinschaft"), aber \
 erkläre sie sofort in einfachen Worten.
+- Wenn der Kontext einen Abschnitt "[Zuständige Stelle laut Behördenfinder (PVOG)]" \
+enthält, nenne diese Stelle in der Antwort ausdrücklich mit Name, Adresse und \
+Kontaktmöglichkeiten — das ist die konkrete Anlaufstelle für die Person.
 - Mache die Antwort handlungsorientiert. Wenn es zur Frage passt, nenne: \
 Wer hat Anspruch? Was muss man konkret tun? Welche Behörde ist zuständig \
 (z. B. Familienkasse für Kindergeld, Jobcenter für Bürgergeld/Grundsicherung)?
@@ -80,7 +84,16 @@ class RAGPipeline:
         self.client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
         self.index = faiss.read_index(str(resolve_faiss_path()))
 
-    def query(self, message: str, language: str = "de", topic: str | None = None):
+    def query(
+        self,
+        message: str,
+        language: str = "de",
+        topic: str | None = None,
+        authority: BehoerdeResult | None = None,
+        ask_for_plz: bool = False,
+        authority_missing: bool = False,
+        history: list[dict] | None = None,
+    ):
         embed_response = self.client.embeddings.create(model=EMBEDDING_MODEL, input=message)
         query_vector = np.array([embed_response.data[0].embedding], dtype="float32")
         faiss.normalize_L2(query_vector)
@@ -94,17 +107,47 @@ class RAGPipeline:
         ordered_chunks = [chunks_by_id[i] for i in hit_ids if i in chunks_by_id]
 
         context_text = "\n\n".join(f"[{c.title}]\n{c.content}" for c in ordered_chunks)
+        if authority is not None:
+            context_text = (
+                "[Zuständige Stelle laut Behördenfinder (PVOG)]\n"
+                f"{authority.context_block()}\n\n{context_text}"
+            )
+
+        directives = [language_directive(language)]
+        if ask_for_plz:
+            directives.append(
+                "Die Person möchte wissen, welche Stelle zuständig ist, hat aber "
+                "keinen Ort genannt. Bitte sie (in der Antwortsprache) um ihre "
+                "Postleitzahl, damit du die zuständige Stelle nennen kannst."
+            )
+        if authority_missing:
+            directives.append(
+                "Die zuständige Stelle konnte nicht automatisch ermittelt werden. "
+                "ERFINDE KEINE Adressen oder Telefonnummern. Verweise die Person "
+                "stattdessen auf https://servicesuche.bund.de/ zur Suche der "
+                "zuständigen Stelle."
+            )
+
+        # The last ~3 exchanges give follow-ups like a bare "10115" their
+        # context; older turns add cost without adding grounding.
+        history_messages = [
+            {"role": m["role"], "content": m["content"]} for m in (history or [])[-6:]
+        ]
         completion = self.client.chat.completions.create(
             model=CHAT_MODEL,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
+                *history_messages,
                 {
                     "role": "user",
-                    "content": f"Kontext:\n{context_text}\n\nFrage: {message}\n\n{language_directive(language)}",
+                    "content": f"Kontext:\n{context_text}\n\nFrage: {message}\n\n"
+                    + "\n".join(directives),
                 },
             ],
         )
         answer = completion.choices[0].message.content
 
         sources = [{"title": c.title, "url": c.url} for c in ordered_chunks]
+        if authority is not None:
+            sources.insert(0, authority.source())
         return answer, sources
