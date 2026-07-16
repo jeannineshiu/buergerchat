@@ -62,6 +62,10 @@ LANGUAGE_NAMES = {
     "uk": "українська",
     "ru": "русский",
     "pl": "polski",
+    "zh-Hant": "繁體中文 (Traditional Chinese)",
+    "zh-Hans": "简体中文 (Simplified Chinese)",
+    "vi": "Tiếng Việt",
+    "id": "Bahasa Indonesia",
 }
 
 
