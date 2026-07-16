@@ -112,9 +112,11 @@ export default function Home() {
               <h2 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
                 Womit können wir helfen?
               </h2>
-              <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
-                Stellen Sie Ihre Frage zu Leistungen und Behörden — Sie bekommen
-                eine einfache Antwort mit den offiziellen Quellen.
+              <p className="mx-auto mt-2 max-w-lg text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
+                Einfache Antworten mit offiziellen Quellen zu: Bürgergeld,
+                Kindergeld &amp; Familienleistungen, Rente, Wohngeld, Steuer-ID,
+                Aufenthalt &amp; Einbürgerung. Wir finden auch Ihre zuständige
+                Behörde — nennen Sie dafür Ihre Postleitzahl.
               </p>
             </div>
             <StarterPrompts onSelect={handleSend} />

@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 buergerchat is a RAG chatbot for German government services (全德國政府服務 RAG chatbot). It is a monorepo with three independent modules, each with its own dependency set; git history is shared at the repo root only. Crawler and backend deliberately do not import from each other — they agree on schemas (JSONL fields, the `chunks` table) instead of sharing code.
 
-**Positioning:** translate official German documents into plain language (einfache Sprache), always citing original sources, so anyone can understand their rights. Three MVP themes, in priority order: (1) Bürgergeld / Neue Grundsicherung, (2) Kindergeld, (3) finding the right Behörde. Answers should be actionable (eligibility, steps, responsible authority) — not just informative.
+**Positioning:** translate official German documents into plain language (einfache Sprache), always citing original sources, so anyone can understand their rights. Three MVP themes, in priority order: (1) Bürgergeld / Neue Grundsicherung, (2) Kindergeld, (3) finding the right Behörde. Knowledge base since 2026-07 also covers Rente, Wohngeld, Steuer-ID/Steuern, Aufenthalt/Einbürgerung and deeper family benefits (topics chosen from MBE migration-counseling demand reports). Answers should be actionable (eligibility, steps, responsible authority) — not just informative.
 
 **Current status:** crawler, backend RAG pipeline, Behörden-Finder (live PVOG lookup), and frontend chat UI are working end-to-end locally. Not yet done: Postgres (using SQLite locally), Railway deployment, Daytona crawler sandboxes, weekly re-crawl cron, tests.
 
@@ -22,11 +22,12 @@ buergerchat/
 
 - `backend/main.py` — FastAPI entrypoint; `POST /chat` (request: `{message, language="de", history=[]}` where history items are `{role: user|assistant, content}`; response: `{answer, sources: [{title, url}], topic}`; 503 `{error}` while the index is missing), `GET /health` (always 200: `{status: ok|degraded, index: loaded|missing}` — degraded means the volume isn't populated yet), `POST /feedback/message` (thumbs per answer) + `POST /feedback/session` (1–5 stars per conversation) → `feedback.db`, a **separate** sqlite file in `DATA_DIR` (`FEEDBACK_DATABASE_URL` to override) — never metadata.db, which the index upload replaces wholesale. CORS allows `http://localhost:3000` + `FRONTEND_ORIGIN`. Loads `backend/.env` at import time. Falls back to `history` for topic/authority-intent/PLZ so a bare-PLZ follow-up ("10115") works.
 - `backend/rag.py` — `RAGPipeline`: loads the FAISS index read-only and **lazily** (first query or `/health`, not import — the app must boot with an empty volume; raises `IndexNotReadyError` → /chat 503); query → embed (`text-embedding-3-small`) → top-5 cosine search → metadata lookup → answer via `gpt-5.4-mini` (`CHAT_MODEL` env to override; 4o-mini code-switched German into zh-Hans answers). Optionally injects a `BehoerdeResult` as an extra context block + first source, and carries prompt directives for ask-for-PLZ / authority-not-found (must not invent addresses).
-- `backend/router.py` — `QueryRouter`, rule-based topic classification (buergergeld / kindergeld / arbeitslos / familie-und-kinder / allgemein), plus `wants_authority()` (keyword intent: user asks which Behörde is responsible) and `extract_plz()`.
+- `backend/router.py` — `QueryRouter`, rule-based topic classification (buergergeld / kindergeld / arbeitslos / familie-und-kinder / rente / wohngeld / steuern / aufenthalt / allgemein), plus `wants_authority()` (keyword intent: user asks which Behörde is responsible) and `extract_plz()`.
 - `backend/behoerde.py` — `BehoerdeFinder`: live lookup of the zuständige Stelle via the public PVOG Suchdienst API (no API key). Chain: PLZ → ARS candidates (exact → Kreis → Land level, since e.g. Berlin registers data at city level) → Leistung search (topic-specific query terms, else stopword-stripped user message) → organisation units (role 01 preferred) → detail with address. Land/Kommune Leistungen win over federal ones (federal = hotline fallback). Any failure returns `None`; /chat degrades gracefully.
 - `backend/app/db.py`, `backend/app/models.py` — SQLAlchemy engine + `Chunk` model (`chunks` table; `id` doubles as the FAISS vector ID).
 - `crawler/arbeitsagentur_crawler.py` — sitemap-driven crawl of arbeitsagentur.de, topic-filtered by URL keywords → `crawler/output/arbeitsagentur.jsonl`. Incremental: re-running skips already-crawled URLs and appends.
-- `crawler/gesetze_crawler.py` — 5 laws (SGB I/II/VIII/X, BKGG) from gesetze-im-internet.de, one record per § section → `crawler/output/gesetze.jsonl`. Site pages are ISO-8859-1, not UTF-8.
+- `crawler/gesetze_crawler.py` — 9 laws (SGB I/II/VI/VIII/X/XII, BKGG, WoGG, AufenthG) from gesetze-im-internet.de, one record per § section → `crawler/output/gesetze.jsonl`. Site pages are ISO-8859-1, not UTF-8.
+- `crawler/portal_crawler.py` — one configurable crawler for five federal portals → `crawler/output/portal_<site>.jsonl`: familienportal.de (family benefits), bzst.de (Steuer-ID/taxes; **robots Crawl-delay 30s**, only `/DE/Privatpersonen/`), deutsche-rentenversicherung.de (Rente; Crawl-delay 12s), bmwsb.bund.de (Wohngeld), bamf.de (Aufenthalt; no sitemap → BFS restricted to `/DE/Themen/`, depth ≤ 3). Sitemap-driven otherwise, incremental like the arbeitsagentur crawler. `python portal_crawler.py [site ...] [--limit N]`.
 - `crawler/build_index.py` — merge JSONLs → chunk (800 chars / 100 overlap) → OpenAI embeddings → writes `data/faiss_index.bin` + `data/metadata.db` (drop-and-recreate, full re-embed each run).
 - `crawler/main.py` — placeholder, unused.
 
@@ -58,7 +59,8 @@ API at `http://localhost:8000`. Startup requires `OPENAI_API_KEY` set and `data/
 ```bash
 cd crawler
 python arbeitsagentur_crawler.py   # ~45 min full crawl (rate-limited)
-python gesetze_crawler.py          # seconds (5 requests)
+python gesetze_crawler.py          # seconds (9 requests)
+python portal_crawler.py           # ~1.5-2 h all five portals (bzst's 30s crawl-delay dominates)
 python build_index.py              # merge + chunk + embed + write data/
 ```
 

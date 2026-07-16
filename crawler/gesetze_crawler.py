@@ -1,4 +1,4 @@
-"""Crawler for gesetze-im-internet.de — scoped to 5 laws relevant to buergerchat.
+"""Crawler for gesetze-im-internet.de — scoped to the laws relevant to buergerchat.
 
 No sitemap on this site. Each law's "Gesamtausgabe" (single-page full text)
 URL was found by hand via the alphabetical index (Teilliste_S.html /
@@ -38,6 +38,10 @@ LAWS = [
     ("SGB VIII", "https://www.gesetze-im-internet.de/sgb_8/", "BJNR111630990.html", "familie-und-kinder"),
     ("SGB X", "https://www.gesetze-im-internet.de/sgb_10/", "BJNR114690980.html", "allgemein"),
     ("BKGG", "https://www.gesetze-im-internet.de/bkgg_1996/", "BJNR137800995.html", "kindergeld"),
+    ("SGB VI", "https://www.gesetze-im-internet.de/sgb_6/", "BJNR122610989.html", "rente"),
+    ("SGB XII", "https://www.gesetze-im-internet.de/sgb_12/", "BJNR302300003.html", "rente"),
+    ("WoGG", "https://www.gesetze-im-internet.de/wogg/", "BJNR185610008.html", "wohngeld"),
+    ("AufenthG", "https://www.gesetze-im-internet.de/aufenthg_2004/", "BJNR195010004.html", "aufenthalt"),
 ]
 
 

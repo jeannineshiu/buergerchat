@@ -10,7 +10,23 @@ TOPIC_KEYWORDS = {
     "buergergeld": ["buergergeld", "bürgergeld", "grundsicherung", "jobcenter"],
     "kindergeld": ["kindergeld", "kinderzuschlag", "familienkasse"],
     "arbeitslos": ["arbeitslos", "arbeitsuche", "arbeitslosengeld"],
-    "familie-und-kinder": ["familie", "kinder", "elterngeld"],
+    "familie-und-kinder": ["familie", "kinder", "elterngeld", "unterhaltsvorschuss", "mutterschaft"],
+    "rente": ["rente", "altersvorsorge", "erwerbsminderung", "hinterbliebene", "witwenrente"],
+    "wohngeld": ["wohngeld", "mietzuschuss", "lastenzuschuss"],
+    "steuern": ["steuer", "finanzamt", "identifikationsnummer"],
+    "aufenthalt": [
+        "aufenthalt",
+        "visum",
+        "visa",
+        "niederlassungserlaubnis",
+        "einbürgerung",
+        "einbuergerung",
+        "ausländerbehörde",
+        "auslaenderbehoerde",
+        "asyl",
+        "blaue karte",
+        "integrationskurs",
+    ],
 }
 
 DEFAULT_TOPIC = "allgemein"

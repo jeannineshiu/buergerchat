@@ -30,6 +30,11 @@ MERGED_OUTPUT_PATH = CRAWLER_OUTPUT_DIR / "merged.jsonl"
 INPUT_FILES = [
     (CRAWLER_OUTPUT_DIR / "arbeitsagentur.jsonl", "arbeitsagentur"),
     (CRAWLER_OUTPUT_DIR / "gesetze.jsonl", "gesetze"),
+    (CRAWLER_OUTPUT_DIR / "portal_familienportal.jsonl", "familienportal"),
+    (CRAWLER_OUTPUT_DIR / "portal_bzst.jsonl", "bzst"),
+    (CRAWLER_OUTPUT_DIR / "portal_drv.jsonl", "deutsche-rentenversicherung"),
+    (CRAWLER_OUTPUT_DIR / "portal_bmwsb.jsonl", "bmwsb"),
+    (CRAWLER_OUTPUT_DIR / "portal_bamf.jsonl", "bamf"),
 ]
 
 EMBEDDING_MODEL = "text-embedding-3-small"
@@ -73,6 +78,9 @@ def resolve_faiss_path(raw_path: str) -> Path:
 def load_and_merge_records() -> list[dict]:
     records = []
     for path, source in INPUT_FILES:
+        if not path.exists():
+            print(f"[warn] {path.name} missing — skipping {source}", file=sys.stderr)
+            continue
         with open(path, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()

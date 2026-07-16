@@ -27,6 +27,10 @@ TOPIC_QUERIES = {
     "buergergeld": ["Bürgergeld beantragen", "Grundsicherungsgeld beantragen"],
     "kindergeld": ["Kindergeld beantragen"],
     "arbeitslos": ["Arbeitslosengeld beantragen"],
+    "rente": ["Altersrente beantragen", "Rente beantragen"],
+    "wohngeld": ["Wohngeld beantragen"],
+    "steuern": ["Steuerliche Identifikationsnummer"],
+    "aufenthalt": ["Aufenthaltserlaubnis beantragen", "Aufenthaltstitel"],
 }
 
 # Question words and filler dilute the PVOG full-text search ("Wo kann ich
