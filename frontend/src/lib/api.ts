@@ -33,3 +33,34 @@ export async function sendChatMessage(
 
   return response.json();
 }
+
+export interface MessageFeedback {
+  message_id: string;
+  session_id: string;
+  rating: "up" | "down";
+  comment?: string;
+  topic?: string;
+}
+
+export interface SessionFeedback {
+  session_id: string;
+  rating: number; // 1-5
+  comment?: string;
+}
+
+async function postFeedback(path: string, body: MessageFeedback | SessionFeedback) {
+  const response = await fetch(`${API_URL}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw new Error(`Feedback request failed (${response.status})`);
+  }
+}
+
+export const sendMessageFeedback = (body: MessageFeedback) =>
+  postFeedback("/feedback/message", body);
+
+export const sendSessionFeedback = (body: SessionFeedback) =>
+  postFeedback("/feedback/session", body);

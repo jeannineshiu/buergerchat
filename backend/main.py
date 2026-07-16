@@ -10,11 +10,16 @@ from typing import Literal
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from app.db import FeedbackSessionLocal, FeedbackBase, feedback_engine
+from app.models import FeedbackMessage, FeedbackSession
 from behoerde import BehoerdeFinder
 from rag import IndexNotReadyError, RAGPipeline
 from router import DEFAULT_TOPIC, QueryRouter
+
+# Creates only the missing feedback tables; a no-op once they exist.
+FeedbackBase.metadata.create_all(feedback_engine)
 
 app = FastAPI(
     title="buergerchat API",
@@ -123,6 +128,42 @@ def chat(request: ChatRequest) -> ChatResponse:
         sources=[Source(**s) for s in sources],
         topic=topic,
     )
+
+
+class MessageFeedbackRequest(BaseModel):
+    message_id: str
+    session_id: str
+    rating: Literal["up", "down"]
+    comment: str | None = None
+    topic: str | None = None
+
+
+class SessionFeedbackRequest(BaseModel):
+    session_id: str
+    rating: int = Field(ge=1, le=5)
+    comment: str | None = None
+
+
+@app.post("/feedback/message", status_code=201)
+def feedback_message(request: MessageFeedbackRequest):
+    session = FeedbackSessionLocal()
+    try:
+        session.add(FeedbackMessage(**request.model_dump()))
+        session.commit()
+    finally:
+        session.close()
+    return {"status": "saved"}
+
+
+@app.post("/feedback/session", status_code=201)
+def feedback_session(request: SessionFeedbackRequest):
+    session = FeedbackSessionLocal()
+    try:
+        session.add(FeedbackSession(**request.model_dump()))
+        session.commit()
+    finally:
+        session.close()
+    return {"status": "saved"}
 
 
 @app.get("/health")

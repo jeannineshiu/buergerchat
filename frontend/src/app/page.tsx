@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ChatMessage, type Message } from "@/components/ChatMessage";
 import { StarterPrompts } from "@/components/StarterPrompts";
 import { LanguageSelect } from "@/components/LanguageSelect";
+import { SessionFeedback } from "@/components/SessionFeedback";
 import { sendChatMessage } from "@/lib/api";
 
 function BrandMark() {
@@ -45,7 +46,12 @@ export default function Home() {
   const [language, setLanguage] = useState("de");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sessionId] = useState(() => crypto.randomUUID());
+  const [sessionFeedbackDone, setSessionFeedbackDone] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  const answerCount = messages.filter((m) => m.role === "assistant").length;
+  const showSessionFeedback = answerCount >= 3 && !isLoading && !sessionFeedbackDone;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -66,6 +72,7 @@ export default function Home() {
       setMessages((prev) => [
         ...prev,
         {
+          id: crypto.randomUUID(),
           role: "assistant",
           content: response.answer,
           sources: response.sources,
@@ -115,9 +122,15 @@ export default function Home() {
         ) : (
           <div className="flex flex-1 flex-col gap-4" role="log" aria-live="polite">
             {messages.map((message, i) => (
-              <ChatMessage key={i} message={message} />
+              <ChatMessage key={message.id ?? i} message={message} sessionId={sessionId} />
             ))}
             {isLoading && <TypingIndicator />}
+            {showSessionFeedback && (
+              <SessionFeedback
+                sessionId={sessionId}
+                onDismiss={() => setSessionFeedbackDone(true)}
+              />
+            )}
             {error && (
               <div className="flex justify-start">
                 <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">

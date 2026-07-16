@@ -1,7 +1,9 @@
 import type { Source } from "@/lib/api";
 import { Markdown } from "@/components/Markdown";
+import { MessageFeedback } from "@/components/MessageFeedback";
 
 export interface Message {
+  id?: string;
   role: "user" | "assistant";
   content: string;
   sources?: Source[];
@@ -78,7 +80,13 @@ function SourceList({ sources }: { sources: Source[] }) {
   );
 }
 
-export function ChatMessage({ message }: { message: Message }) {
+export function ChatMessage({
+  message,
+  sessionId,
+}: {
+  message: Message;
+  sessionId?: string;
+}) {
   if (message.role === "user") {
     return (
       <div className="flex justify-end">
@@ -99,6 +107,13 @@ export function ChatMessage({ message }: { message: Message }) {
         {message.topic === "buergergeld" && <BuergergeldNotice />}
         {message.sources && message.sources.length > 0 && (
           <SourceList sources={message.sources} />
+        )}
+        {message.id && sessionId && (
+          <MessageFeedback
+            messageId={message.id}
+            sessionId={sessionId}
+            topic={message.topic}
+          />
         )}
       </div>
     </div>
