@@ -225,7 +225,17 @@ class RAGPipeline:
         )
         answer = completion.choices[0].message.content
 
-        sources = [{"title": c.title, "url": c.url} for c in ordered_chunks]
+        # Several of the top-K chunks often come from the same (long) page —
+        # fine for the context, but the visible source list should name each
+        # page once, in retrieval order.
+        sources = []
+        seen_urls = set()
+        for c in ordered_chunks:
+            if c.url not in seen_urls:
+                seen_urls.add(c.url)
+                sources.append({"title": c.title, "url": c.url})
         if authority is not None:
-            sources.insert(0, authority.source())
+            authority_source = authority.source()
+            sources = [s for s in sources if s["url"] != authority_source["url"]]
+            sources.insert(0, authority_source)
         return answer, sources

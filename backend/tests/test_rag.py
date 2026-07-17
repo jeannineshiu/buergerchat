@@ -16,6 +16,13 @@ CHUNKS = [
     (2, "Wohngeld ist ein Zuschuss zur Miete."),
 ]
 
+# Two chunks of the same long page: retrieval may return both, the visible
+# source list must name the page once.
+SAME_PAGE_CHUNKS = [
+    (3, "Kindergeld Teil eins: Anspruch und Höhe der Leistung."),
+    (4, "Kindergeld Teil zwei: Antrag und Auszahlung der Leistung."),
+]
+
 
 @pytest.fixture()
 def pipeline(data_dir, fake_openai, monkeypatch):
@@ -28,17 +35,20 @@ def pipeline(data_dir, fake_openai, monkeypatch):
     session = SessionLocal()
     for cid, text in CHUNKS:
         session.add(Chunk(id=cid, url=f"https://example.org/{cid}", title=f"Doc {cid}", content=text))
+    for cid, text in SAME_PAGE_CHUNKS:
+        session.add(Chunk(id=cid, url="https://example.org/kindergeld", title="Kindergeld", content=text))
     session.commit()
     session.close()
 
     # Build the FAISS index from the same fake embeddings the query will use.
+    all_chunks = CHUNKS + SAME_PAGE_CHUNKS
     vectors = np.array(
-        [fake_openai.embeddings.create(model="x", input=text).data[0].embedding for _, text in CHUNKS],
+        [fake_openai.embeddings.create(model="x", input=text).data[0].embedding for _, text in all_chunks],
         dtype="float32",
     )
     faiss.normalize_L2(vectors)
     index = faiss.IndexIDMap(faiss.IndexFlatIP(1536))
-    index.add_with_ids(vectors, np.array([cid for cid, _ in CHUNKS], dtype="int64"))
+    index.add_with_ids(vectors, np.array([cid for cid, _ in all_chunks], dtype="int64"))
     faiss.write_index(index, str(data_dir / "faiss_index.bin"))
 
     monkeypatch.setattr(rag, "TOP_K", 2)
@@ -73,6 +83,27 @@ class TestQuery:
         answer, sources = pipeline.query("Bürgergeld ist eine Leistung des Jobcenters.")
         assert answer == "STUB ANSWER"
         assert sources[0]["url"] == "https://example.org/0"
+
+    def test_sources_deduped_by_url(self, pipeline, monkeypatch):
+        monkeypatch.setattr(rag, "TOP_K", 5)
+        # Both halves of the Kindergeld page should be retrieved (identical
+        # first words → similar fake embeddings), but the source appears once.
+        _, sources = pipeline.query("Kindergeld Teil eins: Anspruch und Höhe der Leistung.")
+        urls = [s["url"] for s in sources]
+        assert len(urls) == len(set(urls))
+        assert "https://example.org/kindergeld" in urls
+
+    def test_authority_not_duplicated_when_also_retrieved(self, pipeline):
+        authority = BehoerdeResult(
+            authority_name="Familienkasse", service_name="Kindergeld",
+            website="https://example.org/0",  # same URL as a retrieved chunk
+        )
+        _, sources = pipeline.query(
+            "Bürgergeld ist eine Leistung des Jobcenters.", authority=authority
+        )
+        urls = [s["url"] for s in sources]
+        assert urls.count("https://example.org/0") == 1
+        assert sources[0]["title"] == "Familienkasse — Kindergeld"
 
     def test_authority_becomes_first_source_and_context_block(self, pipeline):
         authority = BehoerdeResult(
