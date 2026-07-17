@@ -23,6 +23,10 @@ SAME_PAGE_CHUNKS = [
     (4, "Kindergeld Teil zwei: Antrag und Auszahlung der Leistung."),
 ]
 
+# Same article syndicated under a different per-Ort URL (arbeitsagentur.de
+# pattern) — identical title, distinct URL, must also be deduped.
+SYNDICATED_CHUNK = (5, "Kindergeld Teil eins: Anspruch und Höhe im Überblick.")
+
 
 @pytest.fixture()
 def pipeline(data_dir, fake_openai, monkeypatch):
@@ -37,11 +41,13 @@ def pipeline(data_dir, fake_openai, monkeypatch):
         session.add(Chunk(id=cid, url=f"https://example.org/{cid}", title=f"Doc {cid}", content=text))
     for cid, text in SAME_PAGE_CHUNKS:
         session.add(Chunk(id=cid, url="https://example.org/kindergeld", title="Kindergeld", content=text))
+    session.add(Chunk(id=SYNDICATED_CHUNK[0], url="https://example.org/vor-ort/x/kindergeld",
+                      title="Kindergeld", content=SYNDICATED_CHUNK[1]))
     session.commit()
     session.close()
 
     # Build the FAISS index from the same fake embeddings the query will use.
-    all_chunks = CHUNKS + SAME_PAGE_CHUNKS
+    all_chunks = CHUNKS + SAME_PAGE_CHUNKS + [SYNDICATED_CHUNK]
     vectors = np.array(
         [fake_openai.embeddings.create(model="x", input=text).data[0].embedding for _, text in all_chunks],
         dtype="float32",
@@ -90,7 +96,9 @@ class TestQuery:
         # first words → similar fake embeddings), but the source appears once.
         _, sources = pipeline.query("Kindergeld Teil eins: Anspruch und Höhe der Leistung.")
         urls = [s["url"] for s in sources]
+        titles = [s["title"] for s in sources]
         assert len(urls) == len(set(urls))
+        assert len(titles) == len(set(titles))  # syndicated per-Ort copy deduped
         assert "https://example.org/kindergeld" in urls
 
     def test_authority_not_duplicated_when_also_retrieved(self, pipeline):

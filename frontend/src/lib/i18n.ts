@@ -30,6 +30,7 @@ export interface UIStrings {
   skip: string;
   submit: string;
   stars: string; // aria: "<n> {stars}"
+  newChat: string;
   starters: StarterPrompt[];
 }
 
@@ -58,6 +59,7 @@ const de: UIStrings = {
   skip: "Überspringen",
   submit: "Absenden",
   stars: "Sterne",
+  newChat: "Neues Gespräch",
   starters: [
     {
       topic: "buergergeld",
@@ -100,6 +102,7 @@ const en: UIStrings = {
   skip: "Skip",
   submit: "Submit",
   stars: "stars",
+  newChat: "New chat",
   starters: [
     {
       topic: "buergergeld",
@@ -142,6 +145,7 @@ const tr: UIStrings = {
   skip: "Atla",
   submit: "Gönder",
   stars: "yıldız",
+  newChat: "Yeni sohbet",
   starters: [
     {
       topic: "buergergeld",
@@ -184,6 +188,7 @@ const ar: UIStrings = {
   skip: "تخطي",
   submit: "إرسال",
   stars: "نجوم",
+  newChat: "محادثة جديدة",
   starters: [
     {
       topic: "buergergeld",
@@ -226,6 +231,7 @@ const fa: UIStrings = {
   skip: "رد کردن",
   submit: "ثبت",
   stars: "ستاره",
+  newChat: "گفتگوی جدید",
   starters: [
     {
       topic: "buergergeld",
@@ -268,6 +274,7 @@ const uk: UIStrings = {
   skip: "Пропустити",
   submit: "Надіслати",
   stars: "зірок",
+  newChat: "Нова розмова",
   starters: [
     {
       topic: "buergergeld",
@@ -310,6 +317,7 @@ const ru: UIStrings = {
   skip: "Пропустить",
   submit: "Отправить",
   stars: "звёзд",
+  newChat: "Новый разговор",
   starters: [
     {
       topic: "buergergeld",
@@ -352,6 +360,7 @@ const pl: UIStrings = {
   skip: "Pomiń",
   submit: "Wyślij",
   stars: "gwiazdek",
+  newChat: "Nowa rozmowa",
   starters: [
     {
       topic: "buergergeld",
@@ -394,6 +403,7 @@ const zhHant: UIStrings = {
   skip: "略過",
   submit: "送出",
   stars: "顆星",
+  newChat: "新對話",
   starters: [
     {
       topic: "buergergeld",
@@ -436,6 +446,7 @@ const zhHans: UIStrings = {
   skip: "跳过",
   submit: "提交",
   stars: "颗星",
+  newChat: "新对话",
   starters: [
     {
       topic: "buergergeld",
@@ -478,6 +489,7 @@ const vi: UIStrings = {
   skip: "Bỏ qua",
   submit: "Gửi",
   stars: "sao",
+  newChat: "Cuộc trò chuyện mới",
   starters: [
     {
       topic: "buergergeld",
@@ -520,6 +532,7 @@ const id: UIStrings = {
   skip: "Lewati",
   submit: "Kirim",
   stars: "bintang",
+  newChat: "Percakapan baru",
   starters: [
     {
       topic: "buergergeld",
@@ -562,6 +575,7 @@ const ko: UIStrings = {
   skip: "건너뛰기",
   submit: "제출",
   stars: "점",
+  newChat: "새 대화",
   starters: [
     {
       topic: "buergergeld",

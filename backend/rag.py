@@ -165,6 +165,7 @@ class RAGPipeline:
         authority_missing: bool = False,
         history: list[dict] | None = None,
         meta_only: bool = False,
+        retrieval_query: str | None = None,
     ):
         # Capability meta-questions skip retrieval entirely: random chunks
         # would leak into the answer and the source list (see META rule in
@@ -172,7 +173,12 @@ class RAGPipeline:
         ordered_chunks = []
         if not meta_only:
             self._ensure_loaded()
-            embed_response = self.client.embeddings.create(model=EMBEDDING_MODEL, input=message)
+            # retrieval_query: follow-ups like "say that in Chinese" carry no
+            # searchable meaning of their own — the caller passes a query
+            # enriched with the previous question instead.
+            embed_response = self.client.embeddings.create(
+                model=EMBEDDING_MODEL, input=retrieval_query or message
+            )
             query_vector = np.array([embed_response.data[0].embedding], dtype="float32")
             faiss.normalize_L2(query_vector)
 
@@ -227,13 +233,18 @@ class RAGPipeline:
 
         # Several of the top-K chunks often come from the same (long) page —
         # fine for the context, but the visible source list should name each
-        # page once, in retrieval order.
+        # page once, in retrieval order. Titles dedupe too: arbeitsagentur.de
+        # syndicates the same article under per-Ort URLs.
         sources = []
-        seen_urls = set()
+        seen_urls: set[str] = set()
+        seen_titles: set[str] = set()
         for c in ordered_chunks:
-            if c.url not in seen_urls:
-                seen_urls.add(c.url)
-                sources.append({"title": c.title, "url": c.url})
+            if c.url in seen_urls or (c.title and c.title in seen_titles):
+                continue
+            seen_urls.add(c.url)
+            if c.title:
+                seen_titles.add(c.title)
+            sources.append({"title": c.title, "url": c.url})
         if authority is not None:
             authority_source = authority.source()
             sources = [s for s in sources if s["url"] != authority_source["url"]]

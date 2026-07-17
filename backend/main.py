@@ -109,13 +109,22 @@ def chat(request: Request, chat_request: ChatRequest) -> ChatResponse:
         )
         return ChatResponse(answer=answer, sources=[], topic=DEFAULT_TOPIC)
 
-    topic = query_router.classify(chat_request.message)
+    message_topic = query_router.classify(chat_request.message)
+    topic = message_topic
     if topic == DEFAULT_TOPIC:
         for past in reversed(user_history):
             past_topic = query_router.classify(past)
             if past_topic != DEFAULT_TOPIC:
                 topic = past_topic
                 break
+
+    # Short follow-ups ("erkläre das nochmal", "用中文講一次", a bare PLZ)
+    # carry no searchable meaning — embedding them retrieves noise. Enrich
+    # the retrieval query with the previous question; the prompt still shows
+    # the user's actual message.
+    retrieval_query = None
+    if message_topic == DEFAULT_TOPIC and user_history and len(chat_request.message) <= 80:
+        retrieval_query = f"{user_history[-1]}\n{chat_request.message}"
 
     wants_authority = query_router.wants_authority(chat_request.message) or any(
         query_router.wants_authority(past) for past in user_history[-2:]
@@ -150,6 +159,7 @@ def chat(request: Request, chat_request: ChatRequest) -> ChatResponse:
         ask_for_plz=ask_for_plz,
         authority_missing=authority_missing,
         history=[m.model_dump() for m in chat_request.history],
+        retrieval_query=retrieval_query,
     )
 
     return ChatResponse(

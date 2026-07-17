@@ -19,11 +19,12 @@ def client(monkeypatch):
 
     def fake_query(message, language="de", topic=None, authority=None,
                    ask_for_plz=False, authority_missing=False, history=None,
-                   meta_only=False):
+                   meta_only=False, retrieval_query=None):
         calls["query"] = {
             "message": message, "language": language, "topic": topic,
             "authority": authority, "ask_for_plz": ask_for_plz,
             "authority_missing": authority_missing, "meta_only": meta_only,
+            "retrieval_query": retrieval_query,
         }
         sources = [{"title": "Doc", "url": "https://example.org"}]
         if authority is not None:
@@ -76,6 +77,22 @@ class TestChat:
         # topic and lookup text come from the history, not the bare PLZ
         assert client.calls["find"]["topic"] == "kindergeld"
         assert client.calls["find"]["query"] == "Wo beantrage ich Kindergeld?"
+
+    def test_short_followup_enriches_retrieval_with_history(self, client):
+        # "say that in Chinese" carries no searchable meaning — retrieval
+        # must reuse the previous question (the reported bug: random chunks).
+        history = [
+            {"role": "user", "content": "Wer bekommt Kindergeld?"},
+            {"role": "assistant", "content": "Kindergeld bekommen Eltern …"},
+        ]
+        client.post("/chat", json={"message": "用中文講一次", "history": history})
+        q = client.calls["query"]
+        assert q["retrieval_query"] == "Wer bekommt Kindergeld?\n用中文講一次"
+        assert q["message"] == "用中文講一次"  # prompt still shows the real message
+
+    def test_fresh_topical_question_keeps_plain_retrieval(self, client):
+        client.post("/chat", json={"message": "Was ist Bürgergeld?"})
+        assert client.calls["query"]["retrieval_query"] is None
 
     def test_failed_lookup_sets_authority_missing(self, client):
         client.post("/chat", json={"message": "Wo ist mein Jobcenter? PLZ 99999"})

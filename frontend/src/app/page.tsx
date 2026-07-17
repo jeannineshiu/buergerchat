@@ -106,24 +106,57 @@ export default function Home() {
     }
   }
 
+  function resetChat() {
+    setMessages([]);
+    setError(null);
+    setSessionFeedbackDone(false);
+    setInput("");
+  }
+
   return (
-    <div className="flex min-h-screen flex-col bg-zinc-100 dark:bg-zinc-950">
-      <header className="sticky top-0 z-10 border-b border-zinc-200 bg-white/90 px-4 py-3 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/90">
+    // h-dvh (not min-h-screen): a fixed column whose middle scrolls keeps
+    // the input pinned to the visible bottom on mobile — 100vh on iOS
+    // includes the area behind the browser chrome.
+    <div className="flex h-dvh flex-col bg-zinc-100 dark:bg-zinc-950">
+      <header className="z-10 border-b border-zinc-200 bg-white/90 px-4 py-3 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/90">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={resetChat}
+            className="flex items-center gap-3 text-start"
+            aria-label={t.newChat}
+          >
             <BrandMark />
             <div>
               <h1 className="text-base font-bold leading-tight text-zinc-900 dark:text-zinc-50">
                 BürgerChat
               </h1>
-              <p className="text-xs text-zinc-500 dark:text-zinc-400">{t.tagline}</p>
+              <p className="hidden text-xs text-zinc-500 sm:block dark:text-zinc-400">
+                {t.tagline}
+              </p>
             </div>
+          </button>
+          <div className="flex items-center gap-2">
+            {messages.length > 0 && (
+              <button
+                type="button"
+                onClick={resetChat}
+                title={t.newChat}
+                aria-label={t.newChat}
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-zinc-200 bg-white text-zinc-500 shadow-sm transition hover:border-blue-300 hover:text-blue-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:border-blue-500/60 dark:hover:text-blue-400"
+              >
+                <svg className="h-4.5 w-4.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                  <path d="M5.433 13.917l1.262-3.155A4 4 0 0 1 7.58 9.42l6.92-6.918a2.121 2.121 0 0 1 3 3l-6.92 6.918c-.383.383-.84.685-1.343.886l-3.154 1.262a.5.5 0 0 1-.65-.65Z" />
+                  <path d="M3.5 5.75c0-.69.56-1.25 1.25-1.25H10A.75.75 0 0 0 10 3H4.75A2.75 2.75 0 0 0 2 5.75v9.5A2.75 2.75 0 0 0 4.75 18h9.5A2.75 2.75 0 0 0 17 15.25V10a.75.75 0 0 0-1.5 0v5.25c0 .69-.56 1.25-1.25 1.25h-9.5c-.69 0-1.25-.56-1.25-1.25v-9.5Z" />
+                </svg>
+              </button>
+            )}
+            <LanguageSelect value={language} onChange={changeLanguage} />
           </div>
-          <LanguageSelect value={language} onChange={changeLanguage} />
         </div>
       </header>
 
-      <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 py-6">
+      <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col overflow-y-auto px-4 py-6">
         {messages.length === 0 ? (
           <div className="flex flex-1 flex-col justify-center gap-8 pb-16">
             <div className="text-center">
@@ -166,7 +199,7 @@ export default function Home() {
         )}
       </main>
 
-      <div className="sticky bottom-0 border-t border-zinc-200 bg-white px-4 pb-4 pt-3 dark:border-zinc-800 dark:bg-zinc-950">
+      <div className="border-t border-zinc-200 bg-white px-4 pb-4 pt-3 dark:border-zinc-800 dark:bg-zinc-950">
         <form
           onSubmit={(e) => {
             e.preventDefault();
