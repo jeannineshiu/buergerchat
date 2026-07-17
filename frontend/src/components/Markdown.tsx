@@ -1,5 +1,6 @@
 import type { ComponentProps } from "react";
 import ReactMarkdown from "react-markdown";
+import remarkCjkFriendly from "remark-cjk-friendly";
 import remarkGfm from "remark-gfm";
 
 type MdProps<T extends keyof React.JSX.IntrinsicElements> = ComponentProps<T> & {
@@ -25,8 +26,11 @@ export function Markdown({ children }: { children: string }) {
   return (
     // dir="auto": answers can be Arabic (RTL) — let the browser pick per block.
     <div dir="auto" className="space-y-2.5 break-words">
+      {/* remark-cjk-friendly: CommonMark refuses to close `**` when it sits
+          between CJK punctuation and a CJK letter (e.g. `**（家庭金辦公室）**可以`),
+          leaving literal asterisks in Chinese/Japanese answers. */}
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[remarkGfm, remarkCjkFriendly]}
         components={{
           a: Anchor,
           p: ({ node: _node, ...props }: MdProps<"p">) => (
