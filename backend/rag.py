@@ -7,6 +7,7 @@ backend worker/replica loads the index independently).
 """
 
 import os
+import re
 import threading
 from pathlib import Path
 
@@ -20,9 +21,13 @@ from behoerde import BehoerdeResult
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 EMBEDDING_MODEL = "text-embedding-3-small"
-# gpt-4o-mini code-switched into German on zh-Hans answers; gpt-5.4-mini
-# (A/B-tested 2026-07) keeps all 12 languages clean at similar latency.
-CHAT_MODEL = os.environ.get("CHAT_MODEL", "gpt-5.4-mini")
+# Model history (all A/B-tested on zh answers): gpt-4o-mini code-switched
+# German into zh-Hans; gpt-5.4-mini fixed that but kept ending answers with
+# "if you want, I can …" offers despite explicit bans (2/4 runs); the
+# chat-tuned gpt-5.3-chat-latest follows the style rules (0/4). It is an
+# unpinned alias — if behavior shifts after an OpenAI update, re-run the
+# style checks and adjust via the CHAT_MODEL env var.
+CHAT_MODEL = os.environ.get("CHAT_MODEL", "gpt-5.3-chat-latest")
 TOP_K = 5
 
 # Product positioning (see CLAUDE.md): translate Amtsdeutsch into plain
@@ -54,9 +59,10 @@ Rente, Wohngeld, Steuer-ID, Aufenthalt und Einbürgerung sowie die Suche nach de
 zuständigen Behörde (mit Postleitzahl).
 - Wenn die Antwort eine PERSÖNLICHE Anspruchs- oder Berechtigungsfrage betrifft \
 (z. B. Anspruch auf Bürgergeld, Niederlassungserlaubnis, Wohngeld), beende die \
-Antwort mit einer direkten Empfehlung in dieser Form: "Um Ihre persönliche \
+Antwort mit einer direkten Empfehlung nach dem Muster "Um Ihre persönliche \
 Situation zu klären, wenden Sie sich an [zuständige Stelle]." — als Aussage, \
-nicht als Frage ("falls Sie möchten" o. Ä. ist verboten).
+nicht als Frage ("falls Sie möchten" o. Ä. ist verboten), und IMMER in der \
+Antwortsprache formuliert (nur der Behördenname bleibt Deutsch).
 - Wenn bei einer Anspruchsfrage eine entscheidende Angabe der Person offensichtlich \
 fehlt (z. B. Art des Aufenthaltstitels, Beschäftigungsstatus, Einkommen), stelle \
 am Ende GENAU EINE gezielte Rückfrage nach der wichtigsten fehlenden Angabe und \
@@ -75,8 +81,20 @@ Wer hat Anspruch? Was muss man konkret tun? Welche Behörde ist zuständig \
 "Grundsicherungsgeld" (Neue Grundsicherung). Beide Begriffe meinen dieselbe Leistung; \
 erwähne das kurz, wenn die Frage eine der beiden Bezeichnungen verwendet.
 - Der Kontext ist immer auf Deutsch. Antworte in der vom Nutzer gewünschten Sprache \
-(steht am Ende der Nachricht). Amtliche Begriffe und Behördennamen bleiben auf \
-Deutsch, mit kurzer Erklärung in der Antwortsprache.\
+(steht am Ende der Nachricht). NUR amtliche Begriffe und Eigennamen (Substantive wie \
+"Familienkasse", "Steuer-Identifikationsnummer") bleiben auf Deutsch, mit kurzer \
+Erklärung in der Antwortsprache — deutsche Adjektive und Satzteile (z. B. \
+"zuständige") werden übersetzt, nie mit dem Zielsprachtext verklebt. Außer diesen \
+Begriffen darf KEIN Wort einer anderen Sprache in der Antwort vorkommen.
+- Nenne konkrete Voraussetzungen (wer, ab wann, unter welchen Bedingungen). \
+Zirkelaussagen wie "Anspruch hat, wer berechtigt ist" sind verboten — wenn der \
+Kontext nichts Konkreteres hergibt, lass den Punkt weg.
+- Beende die Antwort NIE mit Angeboten wie "wenn Sie möchten, kann ich …" oder \
+"soll ich Ihnen …?". Liefere nützliche Zusatzinformation direkt oder lass sie weg. \
+Die einzige erlaubte Rückfrage ist die eine gezielte Frage nach einer fehlenden \
+entscheidenden Angabe (siehe oben) — formuliere sie DIREKT und ohne Anbieterfloskel: \
+"Nennen Sie mir Ihre Postleitzahl, dann nenne ich Ihnen Ihre Familienkasse." \
+statt "Wenn Sie möchten, kann ich Ihnen Ihre Familienkasse finden."\
 """
 
 # The language directive lives at the END of the user message, not only in the
@@ -105,9 +123,28 @@ def language_directive(language: str) -> str:
         return "Antworte auf Deutsch."
     return (
         f"IMPORTANT: Write your entire answer in {name} (language code: {language}), "
-        f"NOT in German. Keep official German terms in German, each with a short "
-        f"explanation in {name}."
+        f"NOT in German. Keep official German terms (nouns/proper names only) in "
+        f"German, each with a short explanation in {name}. Except for those terms, "
+        f"every single word must be {name} — never mix in any third language."
     )
+
+
+# Scripts that are legitimate in NONE of the 13 answer languages (which use
+# Latin, Arabic, Cyrillic, Han and Hangul). Both gpt-5.3 and gpt-5.4-mini
+# occasionally leak e.g. Thai "ย้อนหลัง" into Chinese answers — always at the
+# same semantic spot ("retroactive"). One corrective retry fixes it.
+FORBIDDEN_SCRIPTS = re.compile(
+    "[԰-֏"   # Armenian
+    "֐-׿"    # Hebrew
+    "ހ-޿"    # Thaana
+    "ऀ-෿"    # Devanagari … Sinhala (Indic block run)
+    "฀-໿"    # Thai, Lao
+    "က-႟"    # Myanmar
+    "Ⴀ-ჿ"    # Georgian
+    "ሀ-፿"    # Ethiopic
+    "ក-៿"    # Khmer
+    "぀-ヿ]"   # Hiragana, Katakana
+)
 
 
 def resolve_faiss_path() -> Path:
@@ -197,7 +234,18 @@ class RAGPipeline:
                 f"{authority.context_block()}\n\n{context_text}"
             )
 
-        directives = [language_directive(language)]
+        # End-of-message directives bind harder than system-prompt rules for
+        # this model (same reason language_directive lives here): the offer
+        # endings and third-language leaks survived system-prompt-only bans.
+        directives = [
+            language_directive(language),
+            "Do NOT end your answer with an offer such as 'if you want, I can …' "
+            "(如果您要 / wenn Sie möchten / etc.). Include useful extra information "
+            "directly, or end with ONE direct request for a missing fact, e.g. "
+            "'Tell me your postal code and I will name your Familienkasse.' "
+            "Double-check before finishing: every word is either the answer "
+            "language or an official German term — no other language.",
+        ]
         if ask_for_plz:
             directives.append(
                 "Die Person möchte wissen, welche Stelle zuständig ist, hat aber "
@@ -217,19 +265,39 @@ class RAGPipeline:
         history_messages = [
             {"role": m["role"], "content": m["content"]} for m in (history or [])[-6:]
         ]
+        messages_payload = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            *history_messages,
+            {
+                "role": "user",
+                "content": f"Kontext:\n{context_text}\n\nFrage: {message}\n\n"
+                + "\n".join(directives),
+            },
+        ]
         completion = self.client.chat.completions.create(
-            model=CHAT_MODEL,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                *history_messages,
-                {
-                    "role": "user",
-                    "content": f"Kontext:\n{context_text}\n\nFrage: {message}\n\n"
-                    + "\n".join(directives),
-                },
-            ],
+            model=CHAT_MODEL, messages=messages_payload
         )
         answer = completion.choices[0].message.content
+
+        leak = FORBIDDEN_SCRIPTS.search(answer or "")
+        if leak:
+            # One corrective retry; if the model leaks again, ship the retry
+            # anyway — a rare stray word beats an error.
+            snippet = answer[max(0, leak.start() - 10) : leak.start() + 10]
+            retry = self.client.chat.completions.create(
+                model=CHAT_MODEL,
+                messages=messages_payload
+                + [
+                    {"role": "assistant", "content": answer},
+                    {
+                        "role": "user",
+                        "content": "Your answer mixes in another language "
+                        f"(near: {snippet!r}). Rewrite the ENTIRE answer using only "
+                        "the requested answer language plus official German terms.",
+                    },
+                ],
+            )
+            answer = retry.choices[0].message.content
 
         # Several of the top-K chunks often come from the same (long) page —
         # fine for the context, but the visible source list should name each

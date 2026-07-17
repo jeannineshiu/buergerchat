@@ -134,6 +134,26 @@ class TestQuery:
         history_contents = [m["content"] for m in messages if m["content"].startswith("msg")]
         assert history_contents == [f"msg{i}" for i in range(4, 10)]  # last 6
 
+    def test_third_language_leak_triggers_corrective_retry(self, pipeline):
+        answers = iter(["最多可ย้อนหลัง領 6 個月", "最多可追溯領 6 個月"])
+        calls = []
+
+        def fake_create(model, messages):
+            calls.append(messages)
+            message = type("Msg", (), {"content": next(answers)})()
+            choice = type("Choice", (), {"message": message})()
+            return type("Completion", (), {"choices": [choice]})()
+
+        pipeline.client.chat.completions.create = fake_create
+        answer, _ = pipeline.query("Kindergeld rückwirkend", language="zh-Hant")
+        assert answer == "最多可追溯領 6 個月"
+        assert len(calls) == 2
+        assert "mixes in another language" in calls[1][-1]["content"]
+
+    def test_clean_answer_needs_no_retry(self, pipeline):
+        answer, _ = pipeline.query("Bürgergeld", language="zh-Hant")
+        assert answer == "STUB ANSWER"
+
     def test_ask_for_plz_directive_in_prompt(self, pipeline):
         pipeline.query("Wo ist mein Jobcenter?", ask_for_plz=True)
         prompt = pipeline.client.chat.completions.last_messages[-1]["content"]
