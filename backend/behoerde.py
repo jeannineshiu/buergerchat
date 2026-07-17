@@ -10,6 +10,7 @@ the query → organisation units per Leistung → unit detail with address.
 Every failure path returns None; /chat must keep working without PVOG.
 """
 
+import re
 from dataclasses import dataclass
 
 import httpx
@@ -47,6 +48,42 @@ STOPWORDS = {
 
 # Max organisation units whose detail we fetch while looking for an address.
 MAX_DETAIL_LOOKUPS = 4
+
+# Berlin registers Leistungen at city level with every Bezirk's office
+# attached, so the user's Bezirk must be recovered from the PLZ to pick the
+# right unit (titles like "Jugendamt Treptow-Köpenick - Elterngeldstelle").
+# The location's ARS encodes it: digits 4–5 are the official Bezirk number
+# (fixed since the 2001 Bezirk reform). The quoted part of the location
+# name ("Berlin 'Alt-Treptow'") is only the Ortsteil — it matches unit
+# titles just often enough to mislead, so it serves as fallback only.
+BERLIN_LAND_ARS = "11"
+BERLIN_BEZIRKE = {
+    "01": "Mitte",
+    "02": "Friedrichshain-Kreuzberg",
+    "03": "Pankow",
+    "04": "Charlottenburg-Wilmersdorf",
+    "05": "Spandau",
+    "06": "Steglitz-Zehlendorf",
+    "07": "Tempelhof-Schöneberg",
+    "08": "Neukölln",
+    "09": "Treptow-Köpenick",
+    "10": "Marzahn-Hellersdorf",
+    "11": "Lichtenberg",
+    "12": "Reinickendorf",
+}
+DISTRICT_PATTERN = re.compile(r"'([^']+)'")
+
+
+def _district_of(location: dict) -> str | None:
+    ars = location.get("ars") or ""
+    if ars.startswith(BERLIN_LAND_ARS):
+        # In Berlin only the ARS table is trustworthy — the quoted name
+        # is an Ortsteil ("Kol. Einigkeit"), never an office title.
+        if len(ars) == 12:
+            return BERLIN_BEZIRKE.get(ars[3:5])
+        return None
+    match = DISTRICT_PATTERN.search(location.get("name") or "")
+    return match.group(1) if match else None
 
 FALLBACK_SOURCE_URL = "https://servicesuche.bund.de/"
 
@@ -112,6 +149,7 @@ class BehoerdeFinder:
     def _find(self, plz: str, query: str, topic: str | None) -> BehoerdeResult | None:
         queries = TOPIC_QUERIES.get(topic or "", []) + [strip_stopwords(query)]
         fallback: BehoerdeResult | None = None
+        ars_candidates, districts = self._candidate_ars(plz)
 
         # Zuständigkeit data can hang at any ARS level (Berlin registers at
         # city level, not at the Bezirk the PLZ resolves to), so walk from
@@ -119,40 +157,52 @@ class BehoerdeFinder:
         # descriptions name the concrete local authority; federal ones
         # ("000000000000") mostly point at hotlines and only serve as
         # fallback once no local authority was found anywhere.
-        for ars in self._candidate_ars(plz):
+        for ars in ars_candidates:
             for q in queries:
                 leistungen = self._search_leistungen(ars, q)
                 local = [l for l in leistungen if not _is_federal(l)]
-                result = self._best_authority(ars, local[:3])
+                result = self._best_authority(ars, local[:3], districts)
                 if result and result.street:
                     return result
                 if fallback is None:
                     fallback = result or self._best_authority(
-                        ars, [l for l in leistungen if _is_federal(l)][:2]
+                        ars, [l for l in leistungen if _is_federal(l)][:2], districts
                     )
         return fallback
 
-    def _candidate_ars(self, plz: str) -> list[str]:
+    def _candidate_ars(self, plz: str) -> tuple[list[str], list[str]]:
         locations = self._get("/v3/locations/details", {"plz": plz, "limit": 10}).json()
         if not locations:
-            return []
+            return [], []
         exact = [loc for loc in locations if loc.get("plz") == plz]
-        ars = (exact or locations)[0].get("ars")
+        pool = exact or locations
+        # A PLZ can map to several locations: some registered only at city
+        # level ("Berlin 'Kol. Einigkeit'" → 110000000000), and PLZ borders
+        # cross Bezirke (12157 spans Tempelhof-Schöneberg AND
+        # Steglitz-Zehlendorf) — so walk from the most specific ARS but
+        # keep EVERY district the PLZ touches as a match candidate.
+        location = max(pool, key=lambda loc: len((loc.get("ars") or "").rstrip("0")))
+        ars = location.get("ars")
         if not ars:
-            return []
+            return [], []
+        districts = list(dict.fromkeys(d for d in map(_district_of, pool) if d))
         # ARS layout: Land(2) Reg.-Bezirk(1) Kreis(2) Verband(4) Gemeinde(3).
         candidates = [ars, ars[:5] + "0" * 7, ars[:2] + "0" * 10]
-        return list(dict.fromkeys(candidates))
+        return list(dict.fromkeys(candidates)), districts
 
     def _search_leistungen(self, ars: str, query: str) -> list[dict]:
         payload = self._get(f"/v7/servicedescriptions/{ars}", {"q": query, "size": 5}).json()
         return payload.get("serviceDescriptions", {}).get("content", [])
 
-    def _best_authority(self, ars: str, leistungen: list[dict]) -> BehoerdeResult | None:
+    def _best_authority(
+        self, ars: str, leistungen: list[dict], districts: list[str] | None = None
+    ) -> BehoerdeResult | None:
         # Federal descriptions often only name a hotline/finder without an
         # address, while Land/Kommune ones name the concrete Jobcenter or
         # Bürgeramt — so prefer a unit with a physical address, then a
         # "Zuständige Stelle" (role 01) without one, then anything else.
+        # In city-states all districts' offices hang on the same city-level
+        # Leistung, so a unit naming the user's district beats everything.
         fallback: BehoerdeResult | None = None
         lookups = 0
 
@@ -162,7 +212,15 @@ class BehoerdeFinder:
             if not lbid:
                 continue
             units = self._get("/v2/organisationunits/titles", {"ars": ars, "lbId": lbid}).json()
-            units.sort(key=lambda u: (u.get("role") or {}).get("code") != ROLE_RESPONSIBLE)
+            units.sort(
+                key=lambda u: (
+                    not any(
+                        d.lower() in (u.get("title") or "").lower()
+                        for d in districts or []
+                    ),
+                    (u.get("role") or {}).get("code") != ROLE_RESPONSIBLE,
+                )
+            )
 
             for unit in units:
                 if lookups >= MAX_DETAIL_LOOKUPS:

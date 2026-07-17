@@ -8,7 +8,7 @@ import json
 import httpx
 import pytest
 
-from behoerde import BehoerdeFinder, BehoerdeResult, strip_stopwords, _is_federal
+from behoerde import BehoerdeFinder, BehoerdeResult, strip_stopwords, _district_of, _is_federal
 
 BERLIN_DEEP_ARS = "110010001001"
 BERLIN_CITY_ARS = "110000000000"
@@ -104,6 +104,48 @@ class TestFind:
         finder = make_finder(handler)
         assert finder.find("10115", "Jobcenter", topic="buergergeld") is None
 
+    def test_prefers_unit_naming_the_users_district(self):
+        # Berlin registers one city-level Leistung with every Bezirk's
+        # office attached; the Bezirk (digits 4-5 of the location ARS)
+        # is the signal for the right one — the quoted location name is
+        # only the Ortsteil ("Alt-Treptow"), which must NOT be needed.
+        def handler(request):
+            path = request.url.path
+            if path.endswith("/v3/locations/details"):
+                return httpx.Response(200, json=[
+                    {"ars": BERLIN_CITY_ARS, "plz": "10178", "name": "Berlin, Stadt"},
+                    {"ars": "110090009009", "plz": "12435", "name": "Berlin 'Alt-Treptow'"},
+                ])
+            if "/v7/servicedescriptions/" in path:
+                content = [{"id": "L1.LB.5", "name": "Elterngeld beantragen", "ars": [BERLIN_CITY_ARS]}]
+                return httpx.Response(200, json={"serviceDescriptions": {"content": content}})
+            if path.endswith("/v2/organisationunits/titles"):
+                return httpx.Response(200, json=[
+                    {"id": "L1.OE.1", "title": "Jugendamt - Familienservicebüro", "role": {"code": "01"}},
+                    {"id": "L1.OE.2", "title": "Jugendamt Spandau - Elterngeldstelle", "role": {"code": "01"}},
+                    {"id": "L1.OE.3", "title": "Jugendamt Treptow-Köpenick - Elterngeldstelle", "role": {"code": "01"}},
+                ])
+            if path.endswith("/v5/organisationunits/detail"):
+                titles = {
+                    "L1.OE.1": "Jugendamt - Familienservicebüro",
+                    "L1.OE.2": "Jugendamt Spandau - Elterngeldstelle",
+                    "L1.OE.3": "Jugendamt Treptow-Köpenick - Elterngeldstelle",
+                }
+                return httpx.Response(200, json={
+                    "title": titles[request.url.params.get("q")],
+                    "location": {
+                        "addresses": [{"type": "Hausanschrift", "street": "Teststr. 2", "zip": "12435", "city": "Berlin"}],
+                        "communications": [],
+                    },
+                    "internetAddresses": [],
+                })
+            raise AssertionError(path)
+
+        finder = make_finder(handler)
+        result = finder.find("12435", "Elterngeld", topic="familie-und-kinder")
+        assert result is not None
+        assert result.authority_name == "Jugendamt Treptow-Köpenick - Elterngeldstelle"
+
     def test_federal_hotline_is_fallback_when_no_local_data(self):
         def handler(request):
             path = request.url.path
@@ -138,6 +180,21 @@ class TestTopicQueries:
 
 
 class TestHelpers:
+    def test_district_of_berlin_ars(self):
+        assert _district_of({"ars": "110090009009", "name": "Berlin 'Alt-Treptow'"}) == "Treptow-Köpenick"
+        assert _district_of({"ars": "110110011011", "name": "Berlin 'Lichtenberg'"}) == "Lichtenberg"
+        # City-level ARS has Bezirk "00" — no district.
+        assert _district_of({"ars": "110000000000", "name": "Berlin, Stadt"}) is None
+
+    def test_district_of_ignores_quoted_ortsteil_in_berlin(self):
+        # "Kol. Einigkeit" is an Ortsteil, never an office title — inside
+        # Berlin only the ARS table counts.
+        assert _district_of({"ars": "110000000000", "name": "Berlin 'Kol. Einigkeit'"}) is None
+
+    def test_district_of_falls_back_to_quoted_name_outside_berlin(self):
+        assert _district_of({"ars": "020000000000", "name": "Hamburg 'Altona'"}) == "Altona"
+        assert _district_of({"ars": "091620000000", "name": "München"}) is None
+
     def test_strip_stopwords(self):
         assert strip_stopwords("Wo kann ich meine Wohnung anmelden?") == "Wohnung anmelden"
 
