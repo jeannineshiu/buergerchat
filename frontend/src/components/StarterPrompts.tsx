@@ -1,4 +1,4 @@
-import { STARTER_PROMPTS } from "@/lib/constants";
+import type { StarterPrompt } from "@/lib/i18n";
 
 // Language-neutral icons: the audience may not read German fluently yet,
 // so each theme gets a visual anchor alongside the text.
@@ -8,14 +8,20 @@ const TOPIC_ICONS: Record<string, string> = {
   behoerde: "🏛️",
 };
 
-export function StarterPrompts({ onSelect }: { onSelect: (prompt: string) => void }) {
+export function StarterPrompts({
+  starters,
+  onSelect,
+}: {
+  starters: StarterPrompt[];
+  onSelect: (prompt: string) => void;
+}) {
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-      {STARTER_PROMPTS.map((starter) => (
+      {starters.map((starter) => (
         <button
           key={starter.topic}
           onClick={() => onSelect(starter.prompt)}
-          className="group rounded-2xl border border-zinc-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:border-blue-500/60"
+          className="group rounded-2xl border border-zinc-200 bg-white p-4 text-start shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:border-blue-500/60"
         >
           <span className="text-xl" aria-hidden="true">
             {TOPIC_ICONS[starter.topic] ?? "💬"}

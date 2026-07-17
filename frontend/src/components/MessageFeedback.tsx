@@ -2,11 +2,13 @@
 
 import { useState } from "react";
 import { sendMessageFeedback } from "@/lib/api";
+import type { UIStrings } from "@/lib/i18n";
 
 interface Props {
   messageId: string;
   sessionId: string;
   topic?: string;
+  strings: UIStrings;
 }
 
 function ThumbIcon({ down = false }: { down?: boolean }) {
@@ -25,7 +27,7 @@ function ThumbIcon({ down = false }: { down?: boolean }) {
 // Thumbs on a single answer. up → sent immediately; down → optional comment
 // first. Errors are swallowed into the thanked state on purpose: feedback is
 // never worth surfacing an error to the user for.
-export function MessageFeedback({ messageId, sessionId, topic }: Props) {
+export function MessageFeedback({ messageId, sessionId, topic, strings }: Props) {
   const [phase, setPhase] = useState<"idle" | "commenting" | "done">("idle");
   const [comment, setComment] = useState("");
 
@@ -47,7 +49,7 @@ export function MessageFeedback({ messageId, sessionId, topic }: Props) {
   if (phase === "done") {
     return (
       <p className="mt-3 text-xs text-zinc-400 dark:text-zinc-500" role="status">
-        Thanks for your feedback
+        {strings.feedbackThanks}
       </p>
     );
   }
@@ -58,7 +60,7 @@ export function MessageFeedback({ messageId, sessionId, topic }: Props) {
         <button
           type="button"
           onClick={() => submit("up")}
-          aria-label="Gute Antwort"
+          aria-label={strings.feedbackGood}
           className="rounded-lg p-1.5 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
         >
           <ThumbIcon />
@@ -66,7 +68,7 @@ export function MessageFeedback({ messageId, sessionId, topic }: Props) {
         <button
           type="button"
           onClick={() => setPhase("commenting")}
-          aria-label="Schlechte Antwort"
+          aria-label={strings.feedbackBad}
           className={`rounded-lg p-1.5 transition hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300 ${
             phase === "commenting" ? "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300" : "text-zinc-400"
           }`}
@@ -86,7 +88,7 @@ export function MessageFeedback({ messageId, sessionId, topic }: Props) {
           <textarea
             value={comment}
             onChange={(e) => setComment(e.target.value)}
-            placeholder="What was wrong? (optional)"
+            placeholder={strings.feedbackPlaceholder}
             rows={2}
             dir="auto"
             autoFocus
@@ -96,7 +98,7 @@ export function MessageFeedback({ messageId, sessionId, topic }: Props) {
             type="submit"
             className="self-start rounded-full bg-zinc-800 px-3.5 py-1.5 text-xs font-medium text-white transition hover:bg-zinc-700 dark:bg-zinc-200 dark:text-zinc-900 dark:hover:bg-zinc-300"
           >
-            Send
+            {strings.feedbackSend}
           </button>
         </form>
       )}

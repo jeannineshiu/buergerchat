@@ -1,4 +1,5 @@
 import type { Source } from "@/lib/api";
+import type { UIStrings } from "@/lib/i18n";
 import { Markdown } from "@/components/Markdown";
 import { MessageFeedback } from "@/components/MessageFeedback";
 
@@ -20,7 +21,7 @@ function hostnameOf(url: string): string {
 
 // Shown whenever an answer touches Bürgergeld — pinned in the UI rather than
 // left to the model, which doesn't reliably mention the rename on its own.
-function BuergergeldNotice() {
+function BuergergeldNotice({ text }: { text: string }) {
   return (
     <div className="mt-4 flex gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[13px] leading-relaxed text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
       <svg
@@ -35,19 +36,16 @@ function BuergergeldNotice() {
           clipRule="evenodd"
         />
       </svg>
-      <span>
-        Seit dem 1. Juli 2026 heißt „Bürgergeld“ offiziell „Grundsicherungsgeld“
-        (Neue Grundsicherung). Es handelt sich um dieselbe Leistung.
-      </span>
+      <span>{text}</span>
     </div>
   );
 }
 
-function SourceList({ sources }: { sources: Source[] }) {
+function SourceList({ sources, label }: { sources: Source[]; label: string }) {
   return (
     <div className="mt-4">
       <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
-        Quellen
+        {label}
       </p>
       <ol className="flex flex-col gap-1.5">
         {sources.map((source, i) => (
@@ -83,9 +81,11 @@ function SourceList({ sources }: { sources: Source[] }) {
 export function ChatMessage({
   message,
   sessionId,
+  strings,
 }: {
   message: Message;
   sessionId?: string;
+  strings: UIStrings;
 }) {
   if (message.role === "user") {
     return (
@@ -104,15 +104,18 @@ export function ChatMessage({
       <div className="max-w-[95%] rounded-2xl rounded-bl-md border border-zinc-200 bg-white px-4 py-3.5 text-[15px] text-zinc-800 shadow-sm sm:max-w-[88%] dark:border-zinc-700/80 dark:bg-zinc-900 dark:text-zinc-100">
         <Markdown>{message.content}</Markdown>
 
-        {message.topic === "buergergeld" && <BuergergeldNotice />}
+        {message.topic === "buergergeld" && (
+          <BuergergeldNotice text={strings.buergergeldNotice} />
+        )}
         {message.sources && message.sources.length > 0 && (
-          <SourceList sources={message.sources} />
+          <SourceList sources={message.sources} label={strings.sources} />
         )}
         {message.id && sessionId && (
           <MessageFeedback
             messageId={message.id}
             sessionId={sessionId}
             topic={message.topic}
+            strings={strings}
           />
         )}
       </div>

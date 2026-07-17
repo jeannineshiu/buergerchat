@@ -6,6 +6,7 @@ import { StarterPrompts } from "@/components/StarterPrompts";
 import { LanguageSelect } from "@/components/LanguageSelect";
 import { SessionFeedback } from "@/components/SessionFeedback";
 import { sendChatMessage } from "@/lib/api";
+import { getStrings, RTL_LANGUAGES } from "@/lib/i18n";
 
 function BrandMark() {
   return (
@@ -24,9 +25,9 @@ function BrandMark() {
   );
 }
 
-function TypingIndicator() {
+function TypingIndicator({ label }: { label: string }) {
   return (
-    <div className="flex justify-start" aria-label="Antwort wird erstellt">
+    <div className="flex justify-start" aria-label={label}>
       <div className="flex items-center gap-1.5 rounded-2xl rounded-bl-md border border-zinc-200 bg-white px-4 py-3.5 shadow-sm dark:border-zinc-700/80 dark:bg-zinc-900">
         {[0, 1, 2].map((i) => (
           <span
@@ -50,8 +51,27 @@ export default function Home() {
   const [sessionFeedbackDone, setSessionFeedbackDone] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
+  const t = getStrings(language);
+  const dir = RTL_LANGUAGES.has(language) ? "rtl" : "ltr";
+
   const answerCount = messages.filter((m) => m.role === "assistant").length;
   const showSessionFeedback = answerCount >= 3 && !isLoading && !sessionFeedbackDone;
+
+  useEffect(() => {
+    const saved = localStorage.getItem("buergerchat-language");
+    if (saved) setLanguage(saved);
+  }, []);
+
+  function changeLanguage(code: string) {
+    setLanguage(code);
+    localStorage.setItem("buergerchat-language", code);
+  }
+
+  // Whole-page direction and lang follow the selected language (ar/fa = RTL).
+  useEffect(() => {
+    document.documentElement.lang = language;
+    document.documentElement.dir = dir;
+  }, [language, dir]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -80,7 +100,7 @@ export default function Home() {
         },
       ]);
     } catch {
-      setError("Die Anfrage ist fehlgeschlagen. Bitte versuchen Sie es erneut.");
+      setError(t.errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -96,12 +116,10 @@ export default function Home() {
               <h1 className="text-base font-bold leading-tight text-zinc-900 dark:text-zinc-50">
                 BürgerChat
               </h1>
-              <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                Behördendeutsch in einfache Sprache — mit Quellenangabe
-              </p>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">{t.tagline}</p>
             </div>
           </div>
-          <LanguageSelect value={language} onChange={setLanguage} />
+          <LanguageSelect value={language} onChange={changeLanguage} />
         </div>
       </header>
 
@@ -110,26 +128,29 @@ export default function Home() {
           <div className="flex flex-1 flex-col justify-center gap-8 pb-16">
             <div className="text-center">
               <h2 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
-                Womit können wir helfen?
+                {t.welcomeTitle}
               </h2>
               <p className="mx-auto mt-2 max-w-lg text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
-                Einfache Antworten mit offiziellen Quellen zu: Bürgergeld,
-                Kindergeld &amp; Familienleistungen, Rente, Wohngeld, Steuer-ID,
-                Aufenthalt &amp; Einbürgerung. Wir finden auch Ihre zuständige
-                Behörde — nennen Sie dafür Ihre Postleitzahl.
+                {t.welcomeSubtitle}
               </p>
             </div>
-            <StarterPrompts onSelect={handleSend} />
+            <StarterPrompts starters={t.starters} onSelect={handleSend} />
           </div>
         ) : (
           <div className="flex flex-1 flex-col gap-4" role="log" aria-live="polite">
             {messages.map((message, i) => (
-              <ChatMessage key={message.id ?? i} message={message} sessionId={sessionId} />
+              <ChatMessage
+                key={message.id ?? i}
+                message={message}
+                sessionId={sessionId}
+                strings={t}
+              />
             ))}
-            {isLoading && <TypingIndicator />}
+            {isLoading && <TypingIndicator label={t.typing} />}
             {showSessionFeedback && (
               <SessionFeedback
                 sessionId={sessionId}
+                strings={t}
                 onDismiss={() => setSessionFeedbackDone(true)}
               />
             )}
@@ -156,7 +177,7 @@ export default function Home() {
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Stellen Sie Ihre Frage …"
+            placeholder={t.inputPlaceholder}
             dir="auto"
             className="h-11 flex-1 rounded-full border border-zinc-300 bg-white px-4 text-[15px] text-zinc-900 shadow-sm transition placeholder:text-zinc-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
             disabled={isLoading}
@@ -164,7 +185,7 @@ export default function Home() {
           <button
             type="submit"
             disabled={isLoading || !input.trim()}
-            aria-label="Senden"
+            aria-label={t.send}
             className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-blue-600 text-white shadow-sm transition hover:bg-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
@@ -173,7 +194,7 @@ export default function Home() {
           </button>
         </form>
         <p className="mx-auto mt-2 max-w-3xl text-center text-[11px] text-zinc-400 dark:text-zinc-500">
-          BürgerChat erklärt amtliche Informationen, ersetzt aber keine Rechtsberatung.
+          {t.disclaimer}
         </p>
       </div>
     </div>

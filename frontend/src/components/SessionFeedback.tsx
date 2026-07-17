@@ -2,9 +2,11 @@
 
 import { useState } from "react";
 import { sendSessionFeedback } from "@/lib/api";
+import type { UIStrings } from "@/lib/i18n";
 
 interface Props {
   sessionId: string;
+  strings: UIStrings;
   onDismiss: () => void;
 }
 
@@ -28,7 +30,7 @@ function Star({ filled }: { filled: boolean }) {
 // One-shot rating for the whole conversation; shown once the conversation
 // has enough rounds to be worth rating (see page.tsx). Submit and Skip both
 // dismiss it for the rest of the session.
-export function SessionFeedback({ sessionId, onDismiss }: Props) {
+export function SessionFeedback({ sessionId, strings, onDismiss }: Props) {
   const [rating, setRating] = useState(0);
   const [hovered, setHovered] = useState(0);
   const [comment, setComment] = useState("");
@@ -49,13 +51,13 @@ export function SessionFeedback({ sessionId, onDismiss }: Props) {
   return (
     <div className="mx-auto w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-4 text-center shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
       <p className="text-sm font-medium text-zinc-800 dark:text-zinc-100">
-        Wie hilfreich war dieses Gespräch?
+        {strings.sessionQuestion}
       </p>
 
       <div
         className="mt-2 flex justify-center"
         role="radiogroup"
-        aria-label="Bewertung von 1 bis 5 Sternen"
+        aria-label={`1-5 ${strings.stars}`}
         onMouseLeave={() => setHovered(0)}
       >
         {[1, 2, 3, 4, 5].map((value) => (
@@ -64,7 +66,7 @@ export function SessionFeedback({ sessionId, onDismiss }: Props) {
             type="button"
             role="radio"
             aria-checked={rating === value}
-            aria-label={`${value} Sterne`}
+            aria-label={`${value} ${strings.stars}`}
             onClick={() => setRating(value)}
             onMouseEnter={() => setHovered(value)}
             className="p-1"
@@ -78,7 +80,7 @@ export function SessionFeedback({ sessionId, onDismiss }: Props) {
         <textarea
           value={comment}
           onChange={(e) => setComment(e.target.value)}
-          placeholder="Möchten Sie uns mehr sagen? (optional)"
+          placeholder={strings.sessionPlaceholder}
           rows={2}
           dir="auto"
           className="mt-3 w-full resize-none rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
@@ -91,7 +93,7 @@ export function SessionFeedback({ sessionId, onDismiss }: Props) {
           onClick={onDismiss}
           className="rounded-full px-4 py-1.5 text-xs font-medium text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
         >
-          Skip
+          {strings.skip}
         </button>
         <button
           type="button"
@@ -99,7 +101,7 @@ export function SessionFeedback({ sessionId, onDismiss }: Props) {
           disabled={rating === 0}
           className="rounded-full bg-blue-600 px-4 py-1.5 text-xs font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          Submit
+          {strings.submit}
         </button>
       </div>
     </div>
