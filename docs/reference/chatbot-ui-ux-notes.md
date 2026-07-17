@@ -42,17 +42,15 @@ then components; first impression is the priority.
 | Flexbox/gap, no arbitrary positioning | ✅ mostly (`text-[11px]`/`[13px]` arbitrary sizes used for meta labels) |
 | One alignment per section | ✅ |
 | Conservative pattern for a trust product | ✅ matches our government-service positioning |
-| **No emojis as icons** | ⚠️ starter cards use 💶 👨‍👩‍👧 🏛️ |
+| **No emojis as icons** | ✅ swapped for Heroicons in tinted chips (2026-07-18) |
 | Icon library w/ consistent sizing | ⚠️ hand-rolled inline SVGs (sizes are consistent: 4/4.5/5/6) |
 | Meta labels below 14px | ⚠️ source domains 11px, notice 13px — deliberate for de-emphasis |
 
 ## Open decisions (deliberate deviations, revisit if desired)
 
-1. **Emoji on starter cards**: v0 forbids emoji-as-icon. We chose them as
-   language-neutral anchors for users who can't read German/Latin scripts —
-   an accessibility argument v0's rule doesn't consider. Alternative that
-   satisfies both: monochrome SVG icons (banknote / family / landmark) from
-   one library (e.g. Heroicons, already the style of our inline SVGs).
+1. ~~Emoji on starter cards~~ — resolved: Heroicons outlines (banknotes /
+   user-group / building-library) in soft blue chips keep the icons
+   language-neutral while satisfying the no-emoji rule.
 2. **Sub-14px meta text**: source-card domain labels (11px) and the rename
    notice (13px) are intentionally de-emphasized; body text everywhere else
    is 15px. Acceptable; bump to 12/14 if readability complaints appear.
