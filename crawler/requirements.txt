@@ -1,6 +1,7 @@
 requests==2.32.3
 httpx==0.27.2
 beautifulsoup4==4.12.3
+lxml==5.2.2  # service.berlin.de HTML breaks bs4's html.parser (no <body> found)
 python-dotenv==1.0.1
 openai==1.35.10
 faiss-cpu==1.8.0

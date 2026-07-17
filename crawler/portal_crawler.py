@@ -101,6 +101,22 @@ SITES = {
         topic_rules=[],
         default_topic="wohngeld",
     ),
+    "berlin": Site(
+        name="berlin",
+        host="service.berlin.de",
+        # No sitemap; robots.txt allows identified bots and only blocks
+        # PDFs/exports/the appointment API. BFS: German services index →
+        # numeric detail pages. Language-variant indexes (en/ru/uk/de_plain)
+        # are excluded — detail pages carry the canonical German content.
+        seed_urls=["https://service.berlin.de/dienstleistungen/"],
+        bfs_path_prefix="/dienstleistung",
+        bfs_max_depth=1,
+        url_include=r"service\.berlin\.de/(dienstleistungen/$|dienstleistung/\d+/$)",
+        url_exclude=["/terminvereinbarung/", "/export"],
+        topic_rules=[("/dienstleistung/", "berlin")],
+        default_topic=None,  # never save the index page itself
+        crawl_delay=2.0,
+    ),
     "bamf": Site(
         name="bamf",
         host="www.bamf.de",
@@ -163,8 +179,9 @@ def fetch_sitemap_urls(client: httpx.Client, sitemap_url: str) -> list[str]:
 def extract_page(html: str) -> tuple[str, str, list[str], str | None]:
     """Returns (title, content, same-page links, <base href>) — links feed the
     BFS mode. GSB sites (bamf.de) emit relative hrefs against a <base> tag;
-    joining them against the page URL doubles the path."""
-    soup = BeautifulSoup(html, "html.parser")
+    joining them against the page URL doubles the path. lxml, not html.parser:
+    service.berlin.de's markup makes html.parser lose the whole <body>."""
+    soup = BeautifulSoup(html, "lxml")
 
     links = [a.get("href") for a in soup.find_all("a", href=True)]
     base_tag = soup.find("base")

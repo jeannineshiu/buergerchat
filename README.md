@@ -37,10 +37,11 @@ Built for the people official websites leave behind: migrants, refugees, and any
 - **bzst.de** — Steuer-ID, taxes
 - **bamf.de** — residence, asylum, integration
 - **gesetze-im-internet.de** — 9 laws, section by section: SGB I/II/VI/VIII/X/XII, BKGG, WoGG, AufenthG
+- **service.berlin.de** — all ~600 Berlin public services (requirements, documents, fees, deadlines)
 
 Topic selection follows the documented demand of migration counseling services (MBE reports): unemployment benefits, housing, family benefits and residence status are what people actually need help with.
 
-**Scope**: federal rules — valid Germany-wide. Land- or city-specific programs are not (yet) covered; the authority finder, however, covers all ~11,000 municipalities.
+**Scope**: federal rules (valid Germany-wide) plus Berlin as the first city with local service details. Other Länder/city specifics are not (yet) covered; the authority finder, however, covers all ~11,000 municipalities.
 
 > ⚠️ BürgerChat explains official information. It is not legal advice, and it tells users so.
 
