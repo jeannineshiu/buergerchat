@@ -36,6 +36,13 @@ Wohngeld, Steuer-ID und Steuern, Aufenthalt und Einbürgerung, Zuständigkeiten 
 Regeln:
 - Antworte AUSSCHLIESSLICH auf Basis des gegebenen Kontexts. Wenn der Kontext die \
 Antwort nicht enthält, sage das ehrlich und rate nicht.
+- META-FRAGEN: Fragt die Person, was du kannst oder welche Fragen sie dir stellen \
+kann, ignoriere den Kontext VOLLSTÄNDIG (er ist dann zufällig und irrelevant) und \
+nenne genau diese Themen, ohne weitere hinzuzuerfinden: Bürgergeld/Grundsicherungsgeld, \
+Kindergeld und Familienleistungen, Arbeitslosengeld, Rente, Wohngeld, Steuer-ID und \
+Steuern, Aufenthalt und Einbürgerung — und dass du die zuständige Behörde findest, \
+wenn die Person ihre Postleitzahl nennt. Danach lade zur konkreten Frage ein. Keine \
+Zitate oder Beispiele aus dem Kontext in dieser Antwort.
 - Erwähne den "Kontext" gegenüber der Person NIE — das ist ein internes Detail. \
 Sage stattdessen "nach den gesetzlichen Regelungen", "laut Bundesrecht" oder \
 "nach den offiziellen Informationen". Statt "der Kontext enthält dazu nichts" \
@@ -152,19 +159,25 @@ class RAGPipeline:
         ask_for_plz: bool = False,
         authority_missing: bool = False,
         history: list[dict] | None = None,
+        meta_only: bool = False,
     ):
-        self._ensure_loaded()
-        embed_response = self.client.embeddings.create(model=EMBEDDING_MODEL, input=message)
-        query_vector = np.array([embed_response.data[0].embedding], dtype="float32")
-        faiss.normalize_L2(query_vector)
+        # Capability meta-questions skip retrieval entirely: random chunks
+        # would leak into the answer and the source list (see META rule in
+        # the system prompt).
+        ordered_chunks = []
+        if not meta_only:
+            self._ensure_loaded()
+            embed_response = self.client.embeddings.create(model=EMBEDDING_MODEL, input=message)
+            query_vector = np.array([embed_response.data[0].embedding], dtype="float32")
+            faiss.normalize_L2(query_vector)
 
-        _, ids = self.index.search(query_vector, TOP_K)
-        hit_ids = [int(i) for i in ids[0] if i != -1]
+            _, ids = self.index.search(query_vector, TOP_K)
+            hit_ids = [int(i) for i in ids[0] if i != -1]
 
-        session = SessionLocal()
-        chunks_by_id = {c.id: c for c in session.query(Chunk).filter(Chunk.id.in_(hit_ids)).all()}
-        session.close()
-        ordered_chunks = [chunks_by_id[i] for i in hit_ids if i in chunks_by_id]
+            session = SessionLocal()
+            chunks_by_id = {c.id: c for c in session.query(Chunk).filter(Chunk.id.in_(hit_ids)).all()}
+            session.close()
+            ordered_chunks = [chunks_by_id[i] for i in hit_ids if i in chunks_by_id]
 
         context_text = "\n\n".join(f"[{c.title}]\n{c.content}" for c in ordered_chunks)
         if authority is not None:

@@ -80,6 +80,15 @@ def chat(request: ChatRequest) -> ChatResponse:
     # user's history for whatever the new message doesn't contain.
     user_history = [m.content for m in request.history if m.role == "user"]
 
+    if query_router.is_meta_question(request.message):
+        answer, _ = rag_pipeline.query(
+            request.message,
+            language=request.language,
+            history=[m.model_dump() for m in request.history],
+            meta_only=True,
+        )
+        return ChatResponse(answer=answer, sources=[], topic=DEFAULT_TOPIC)
+
     topic = query_router.classify(request.message)
     if topic == DEFAULT_TOPIC:
         for past in reversed(user_history):
