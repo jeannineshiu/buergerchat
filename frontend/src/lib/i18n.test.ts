@@ -38,8 +38,20 @@ describe("i18n string table", () => {
 
   it("keeps official German terms in German in every locale", () => {
     for (const [code, strings] of Object.entries(UI_STRINGS)) {
-      expect(strings.welcomeSubtitle, code).toContain("Bürgergeld");
+      for (const term of ["Bürgergeld", "Kindergeld", "Rente", "Wohngeld", "Steuer-ID"]) {
+        expect(strings.welcomeSubtitle, `${code} subtitle`).toContain(term);
+      }
       expect(strings.starters[1].prompt, code).toContain("Kindergeld");
+      // Non-German locales must gloss the German term: "Kindergeld（兒童金）".
+      if (code !== "de") {
+        for (const [i, starter] of strings.starters.entries()) {
+          for (const term of ["Bürgergeld", "Kindergeld", "Elterngeld", "Rente", "Wohngeld", "Steuer-ID"]) {
+            if (starter.label.includes(term)) {
+              expect(starter.label, `${code} starters[${i}]`).toMatch(/[(（]/);
+            }
+          }
+        }
+      }
     }
   });
 

@@ -103,7 +103,7 @@ const en: UIStrings = {
   tagline: "German bureaucracy in plain language — with official sources",
   welcomeTitle: "How can we help?",
   welcomeSubtitle:
-    "Simple answers with official sources about: Bürgergeld, Kindergeld & family benefits, pension, Wohngeld, tax ID, residence & citizenship. We can also find your responsible authority — just include your postal code.",
+    "Simple answers with official sources about: Bürgergeld (basic income support), Kindergeld (child benefit) & family benefits, Rente (pension), Wohngeld (housing benefit), Steuer-ID (tax ID), residence & citizenship. We can also find your responsible authority — just include your postal code.",
   inputPlaceholder: "Ask your question …",
   send: "Send",
   typing: "Writing an answer",
@@ -126,7 +126,7 @@ const en: UIStrings = {
   starters: [
     {
       topic: "buergergeld",
-      label: "Bürgergeld / basic income support",
+      label: "Bürgergeld (basic income support)",
       prompt: "Am I entitled to Bürgergeld (basic income support) and how do I apply?",
     },
     {
@@ -136,13 +136,13 @@ const en: UIStrings = {
     },
     {
       topic: "familie-und-kinder",
-      label: "Elterngeld & family",
+      label: "Elterngeld (parental allowance) & family",
       prompt: "How do I apply for Elterngeld (parental allowance) after my child is born?",
     },
     {
       topic: "rente",
-      label: "Pension",
-      prompt: "When can I retire and how do I apply for my pension?",
+      label: "Rente (pension)",
+      prompt: "When can I retire and how do I apply for my Rente (pension)?",
     },
     {
       topic: "wohngeld",
@@ -151,7 +151,7 @@ const en: UIStrings = {
     },
     {
       topic: "steuern",
-      label: "Tax ID",
+      label: "Steuer-ID (tax ID)",
       prompt: "How do I get my Steuer-Identifikationsnummer (tax ID)?",
     },
     {
@@ -166,7 +166,7 @@ const tr: UIStrings = {
   tagline: "Alman resmi dili, sade bir dille — resmi kaynaklarla",
   welcomeTitle: "Size nasıl yardımcı olabiliriz?",
   welcomeSubtitle:
-    "Şu konularda resmi kaynaklı, sade yanıtlar: Bürgergeld, Kindergeld ve aile yardımları, emeklilik, Wohngeld, vergi kimlik numarası, oturum ve vatandaşlık. Posta kodunuzu yazarsanız yetkili daireyi de buluruz.",
+    "Şu konularda resmi kaynaklı, sade yanıtlar: Bürgergeld (temel güvence), Kindergeld (çocuk parası) ve aile yardımları, Rente (emeklilik), Wohngeld (kira yardımı), Steuer-ID (vergi kimlik numarası), oturum ve vatandaşlık. Posta kodunuzu yazarsanız yetkili daireyi de buluruz.",
   inputPlaceholder: "Sorunuzu yazın …",
   send: "Gönder",
   typing: "Yanıt hazırlanıyor",
@@ -189,7 +189,7 @@ const tr: UIStrings = {
   starters: [
     {
       topic: "buergergeld",
-      label: "Bürgergeld / temel güvence",
+      label: "Bürgergeld (temel güvence)",
       prompt: "Bürgergeld (temel güvence) alma hakkım var mı ve nasıl başvururum?",
     },
     {
@@ -199,13 +199,13 @@ const tr: UIStrings = {
     },
     {
       topic: "familie-und-kinder",
-      label: "Elterngeld ve aile",
+      label: "Elterngeld (ebeveyn parası) ve aile",
       prompt: "Çocuğumun doğumundan sonra Elterngeld (ebeveyn parası) başvurusunu nasıl yaparım?",
     },
     {
       topic: "rente",
-      label: "Emeklilik",
-      prompt: "Ne zaman emekli olabilirim ve emeklilik başvurusunu nasıl yaparım?",
+      label: "Rente (emeklilik)",
+      prompt: "Ne zaman emekli olabilirim ve Rente (emeklilik) başvurusunu nasıl yaparım?",
     },
     {
       topic: "wohngeld",
@@ -214,7 +214,7 @@ const tr: UIStrings = {
     },
     {
       topic: "steuern",
-      label: "Vergi kimlik numarası",
+      label: "Steuer-ID (vergi kimlik numarası)",
       prompt: "Steuer-Identifikationsnummer'i (vergi kimlik numarası) nasıl alırım?",
     },
     {
@@ -229,7 +229,7 @@ const ar: UIStrings = {
   tagline: "اللغة الرسمية الألمانية بلغة بسيطة — مع مصادر رسمية",
   welcomeTitle: "كيف يمكننا مساعدتك؟",
   welcomeSubtitle:
-    "إجابات بسيطة بمصادر رسمية حول: Bürgergeld، وKindergeld والإعانات العائلية، والتقاعد، وWohngeld، والرقم الضريبي، والإقامة والتجنيس. يمكننا أيضًا إيجاد الجهة المختصة بك — اذكر الرمز البريدي فقط.",
+    "إجابات بسيطة بمصادر رسمية حول: Bürgergeld (الضمان الأساسي)، وKindergeld (إعانة الأطفال) والإعانات العائلية، وRente (التقاعد)، وWohngeld (إعانة السكن)، وSteuer-ID (الرقم الضريبي)، والإقامة والتجنيس. يمكننا أيضًا إيجاد الجهة المختصة بك — اذكر الرمز البريدي فقط.",
   inputPlaceholder: "اكتب سؤالك …",
   send: "إرسال",
   typing: "جارٍ كتابة الإجابة",
@@ -252,7 +252,7 @@ const ar: UIStrings = {
   starters: [
     {
       topic: "buergergeld",
-      label: "Bürgergeld / الضمان الأساسي",
+      label: "Bürgergeld (الضمان الأساسي)",
       prompt: "هل يحق لي الحصول على Bürgergeld (الضمان الأساسي) وكيف أقدم الطلب؟",
     },
     {
@@ -262,13 +262,13 @@ const ar: UIStrings = {
     },
     {
       topic: "familie-und-kinder",
-      label: "Elterngeld والأسرة",
+      label: "Elterngeld (إعانة الوالدين) والأسرة",
       prompt: "كيف أتقدم بطلب Elterngeld (إعانة الوالدين) بعد ولادة طفلي؟",
     },
     {
       topic: "rente",
-      label: "التقاعد",
-      prompt: "متى يمكنني التقاعد وكيف أتقدم بطلب المعاش؟",
+      label: "Rente (التقاعد)",
+      prompt: "متى يمكنني التقاعد وكيف أتقدم بطلب Rente (المعاش)؟",
     },
     {
       topic: "wohngeld",
@@ -277,7 +277,7 @@ const ar: UIStrings = {
     },
     {
       topic: "steuern",
-      label: "الرقم الضريبي",
+      label: "Steuer-ID (الرقم الضريبي)",
       prompt: "كيف أحصل على Steuer-Identifikationsnummer (الرقم الضريبي)؟",
     },
     {
@@ -292,7 +292,7 @@ const fa: UIStrings = {
   tagline: "زبان اداری آلمانی به زبان ساده — با منابع رسمی",
   welcomeTitle: "چطور می‌توانیم کمک کنیم؟",
   welcomeSubtitle:
-    "پاسخ‌های ساده با منابع رسمی درباره: Bürgergeld، Kindergeld و مزایای خانواده، بازنشستگی، Wohngeld، شماره مالیاتی، اقامت و تابعیت. اداره مسئول شما را هم پیدا می‌کنیم — کافی است کد پستی خود را بنویسید.",
+    "پاسخ‌های ساده با منابع رسمی درباره: Bürgergeld (تأمین پایه)، Kindergeld (کمک‌هزینه فرزند) و مزایای خانواده، Rente (بازنشستگی)، Wohngeld (کمک‌هزینه مسکن)، Steuer-ID (شماره مالیاتی)، اقامت و تابعیت. اداره مسئول شما را هم پیدا می‌کنیم — کافی است کد پستی خود را بنویسید.",
   inputPlaceholder: "سؤال خود را بنویسید …",
   send: "ارسال",
   typing: "در حال نوشتن پاسخ",
@@ -315,7 +315,7 @@ const fa: UIStrings = {
   starters: [
     {
       topic: "buergergeld",
-      label: "Bürgergeld / تأمین پایه",
+      label: "Bürgergeld (تأمین پایه)",
       prompt: "آیا حق دریافت Bürgergeld (تأمین پایه) را دارم و چگونه درخواست بدهم؟",
     },
     {
@@ -325,13 +325,13 @@ const fa: UIStrings = {
     },
     {
       topic: "familie-und-kinder",
-      label: "Elterngeld و خانواده",
+      label: "Elterngeld (کمک‌هزینه والدین) و خانواده",
       prompt: "چگونه پس از تولد فرزندم برای Elterngeld (کمک‌هزینه والدین) درخواست بدهم؟",
     },
     {
       topic: "rente",
-      label: "بازنشستگی",
-      prompt: "چه زمانی می‌توانم بازنشسته شوم و چگونه درخواست مستمری بدهم؟",
+      label: "Rente (بازنشستگی)",
+      prompt: "چه زمانی می‌توانم بازنشسته شوم و چگونه برای Rente (مستمری) درخواست بدهم؟",
     },
     {
       topic: "wohngeld",
@@ -340,7 +340,7 @@ const fa: UIStrings = {
     },
     {
       topic: "steuern",
-      label: "شماره شناسایی مالیاتی",
+      label: "Steuer-ID (شماره شناسایی مالیاتی)",
       prompt: "چگونه Steuer-Identifikationsnummer (شماره شناسایی مالیاتی) را دریافت کنم؟",
     },
     {
@@ -355,7 +355,7 @@ const uk: UIStrings = {
   tagline: "Німецька бюрократична мова — простими словами, з офіційними джерелами",
   welcomeTitle: "Чим можемо допомогти?",
   welcomeSubtitle:
-    "Прості відповіді з офіційними джерелами про: Bürgergeld, Kindergeld та сімейні виплати, пенсію, Wohngeld, податковий номер, перебування та громадянство. Також знайдемо вашу відповідальну установу — просто вкажіть поштовий індекс.",
+    "Прості відповіді з офіційними джерелами про: Bürgergeld (базове забезпечення), Kindergeld (допомогу на дітей) та сімейні виплати, Rente (пенсію), Wohngeld (житлову допомогу), Steuer-ID (податковий номер), перебування та громадянство. Також знайдемо вашу відповідальну установу — просто вкажіть поштовий індекс.",
   inputPlaceholder: "Поставте своє запитання …",
   send: "Надіслати",
   typing: "Готуємо відповідь",
@@ -378,7 +378,7 @@ const uk: UIStrings = {
   starters: [
     {
       topic: "buergergeld",
-      label: "Bürgergeld / базове забезпечення",
+      label: "Bürgergeld (базове забезпечення)",
       prompt: "Чи маю я право на Bürgergeld (базове забезпечення) і як його оформити?",
     },
     {
@@ -388,13 +388,13 @@ const uk: UIStrings = {
     },
     {
       topic: "familie-und-kinder",
-      label: "Elterngeld і сім'я",
+      label: "Elterngeld (батьківська допомога) і сім'я",
       prompt: "Як подати заяву на Elterngeld (батьківську допомогу) після народження дитини?",
     },
     {
       topic: "rente",
-      label: "Пенсія",
-      prompt: "Коли я можу вийти на пенсію і як подати заяву?",
+      label: "Rente (пенсія)",
+      prompt: "Коли я можу вийти на пенсію і як подати заяву на Rente (пенсію)?",
     },
     {
       topic: "wohngeld",
@@ -403,7 +403,7 @@ const uk: UIStrings = {
     },
     {
       topic: "steuern",
-      label: "Податковий номер",
+      label: "Steuer-ID (податковий номер)",
       prompt: "Як отримати Steuer-Identifikationsnummer (податковий номер)?",
     },
     {
@@ -418,7 +418,7 @@ const ru: UIStrings = {
   tagline: "Немецкий бюрократический язык — простыми словами, с официальными источниками",
   welcomeTitle: "Чем мы можем помочь?",
   welcomeSubtitle:
-    "Простые ответы с официальными источниками о: Bürgergeld, Kindergeld и семейных выплатах, пенсии, Wohngeld, налоговом номере, пребывании и гражданстве. Также найдём вашу ответственную инстанцию — просто укажите почтовый индекс.",
+    "Простые ответы с официальными источниками о: Bürgergeld (базовое обеспечение), Kindergeld (пособие на детей) и семейных выплатах, Rente (пенсия), Wohngeld (жилищное пособие), Steuer-ID (налоговый номер), пребывании и гражданстве. Также найдём вашу ответственную инстанцию — просто укажите почтовый индекс.",
   inputPlaceholder: "Задайте свой вопрос …",
   send: "Отправить",
   typing: "Готовим ответ",
@@ -441,7 +441,7 @@ const ru: UIStrings = {
   starters: [
     {
       topic: "buergergeld",
-      label: "Bürgergeld / базовое обеспечение",
+      label: "Bürgergeld (базовое обеспечение)",
       prompt: "Имею ли я право на Bürgergeld (базовое обеспечение) и как его оформить?",
     },
     {
@@ -451,13 +451,13 @@ const ru: UIStrings = {
     },
     {
       topic: "familie-und-kinder",
-      label: "Elterngeld и семья",
+      label: "Elterngeld (родительское пособие) и семья",
       prompt: "Как подать заявление на Elterngeld (родительское пособие) после рождения ребёнка?",
     },
     {
       topic: "rente",
-      label: "Пенсия",
-      prompt: "Когда я могу выйти на пенсию и как подать заявление?",
+      label: "Rente (пенсия)",
+      prompt: "Когда я могу выйти на пенсию и как подать заявление на Rente (пенсию)?",
     },
     {
       topic: "wohngeld",
@@ -466,7 +466,7 @@ const ru: UIStrings = {
     },
     {
       topic: "steuern",
-      label: "Налоговый номер",
+      label: "Steuer-ID (налоговый номер)",
       prompt: "Как получить Steuer-Identifikationsnummer (налоговый номер)?",
     },
     {
@@ -481,7 +481,7 @@ const pl: UIStrings = {
   tagline: "Niemiecki język urzędowy — prostym językiem, z oficjalnymi źródłami",
   welcomeTitle: "W czym możemy pomóc?",
   welcomeSubtitle:
-    "Proste odpowiedzi z oficjalnymi źródłami o: Bürgergeld, Kindergeld i świadczeniach rodzinnych, emeryturze, Wohngeld, numerze podatkowym, pobycie i obywatelstwie. Znajdziemy też właściwy urząd — wystarczy podać kod pocztowy.",
+    "Proste odpowiedzi z oficjalnymi źródłami o: Bürgergeld (zabezpieczenie podstawowe), Kindergeld (zasiłek na dzieci) i świadczeniach rodzinnych, Rente (emerytura), Wohngeld (dodatek mieszkaniowy), Steuer-ID (numer podatkowy), pobycie i obywatelstwie. Znajdziemy też właściwy urząd — wystarczy podać kod pocztowy.",
   inputPlaceholder: "Zadaj swoje pytanie …",
   send: "Wyślij",
   typing: "Przygotowujemy odpowiedź",
@@ -504,7 +504,7 @@ const pl: UIStrings = {
   starters: [
     {
       topic: "buergergeld",
-      label: "Bürgergeld / zabezpieczenie podstawowe",
+      label: "Bürgergeld (zabezpieczenie podstawowe)",
       prompt: "Czy mam prawo do Bürgergeld (zabezpieczenia podstawowego) i jak je złożyć?",
     },
     {
@@ -514,13 +514,13 @@ const pl: UIStrings = {
     },
     {
       topic: "familie-und-kinder",
-      label: "Elterngeld i rodzina",
+      label: "Elterngeld (zasiłek rodzicielski) i rodzina",
       prompt: "Jak złożyć wniosek o Elterngeld (zasiłek rodzicielski) po narodzinach dziecka?",
     },
     {
       topic: "rente",
-      label: "Emerytura",
-      prompt: "Kiedy mogę przejść na emeryturę i jak złożyć wniosek?",
+      label: "Rente (emerytura)",
+      prompt: "Kiedy mogę przejść na emeryturę i jak złożyć wniosek o Rente (emeryturę)?",
     },
     {
       topic: "wohngeld",
@@ -529,7 +529,7 @@ const pl: UIStrings = {
     },
     {
       topic: "steuern",
-      label: "Numer identyfikacji podatkowej",
+      label: "Steuer-ID (numer podatkowy)",
       prompt: "Jak otrzymać Steuer-Identifikationsnummer (numer identyfikacji podatkowej)?",
     },
     {
@@ -544,7 +544,7 @@ const zhHant: UIStrings = {
   tagline: "把德國公文翻成簡單語言 — 附官方來源",
   welcomeTitle: "需要什麼協助？",
   welcomeSubtitle:
-    "提供有官方來源的簡單解答：Bürgergeld、Kindergeld 與家庭福利、退休金、Wohngeld、稅務識別號、居留與入籍。也能幫你找到主管機關 — 只要附上郵遞區號。",
+    "提供有官方來源的簡單解答：Bürgergeld（基本生活保障）、Kindergeld（兒童金）與家庭福利、Rente（退休金）、Wohngeld（住房補貼）、Steuer-ID（稅務識別號）、居留與入籍。也能幫你找到主管機關 — 只要附上郵遞區號。",
   inputPlaceholder: "輸入你的問題 …",
   send: "送出",
   typing: "回答準備中",
@@ -567,7 +567,7 @@ const zhHant: UIStrings = {
   starters: [
     {
       topic: "buergergeld",
-      label: "Bürgergeld / 基本生活保障",
+      label: "Bürgergeld（基本生活保障）",
       prompt: "我有資格領 Bürgergeld（基本生活保障）嗎？要怎麼申請？",
     },
     {
@@ -577,13 +577,13 @@ const zhHant: UIStrings = {
     },
     {
       topic: "familie-und-kinder",
-      label: "Elterngeld 與家庭福利",
+      label: "Elterngeld（父母金）與家庭福利",
       prompt: "孩子出生後，我要怎麼申請 Elterngeld（父母金）？",
     },
     {
       topic: "rente",
-      label: "退休金",
-      prompt: "我什麼時候可以退休？要怎麼申請退休金？",
+      label: "Rente（退休金）",
+      prompt: "我什麼時候可以退休？要怎麼申請 Rente（退休金）？",
     },
     {
       topic: "wohngeld",
@@ -592,7 +592,7 @@ const zhHant: UIStrings = {
     },
     {
       topic: "steuern",
-      label: "稅務識別號",
+      label: "Steuer-ID（稅務識別號）",
       prompt: "我要怎麼取得 Steuer-Identifikationsnummer（稅務識別號）？",
     },
     {
@@ -607,7 +607,7 @@ const zhHans: UIStrings = {
   tagline: "把德国公文翻成简单语言 — 附官方来源",
   welcomeTitle: "需要什么帮助？",
   welcomeSubtitle:
-    "提供有官方来源的简单解答：Bürgergeld、Kindergeld 与家庭福利、养老金、Wohngeld、税务识别号、居留与入籍。也能帮你找到主管机关 — 只要附上邮政编码。",
+    "提供有官方来源的简单解答：Bürgergeld（基本生活保障）、Kindergeld（儿童金）与家庭福利、Rente（养老金）、Wohngeld（住房补贴）、Steuer-ID（税务识别号）、居留与入籍。也能帮你找到主管机关 — 只要附上邮政编码。",
   inputPlaceholder: "输入你的问题 …",
   send: "发送",
   typing: "回答准备中",
@@ -630,7 +630,7 @@ const zhHans: UIStrings = {
   starters: [
     {
       topic: "buergergeld",
-      label: "Bürgergeld / 基本生活保障",
+      label: "Bürgergeld（基本生活保障）",
       prompt: "我有资格领 Bürgergeld（基本生活保障）吗？要怎么申请？",
     },
     {
@@ -640,13 +640,13 @@ const zhHans: UIStrings = {
     },
     {
       topic: "familie-und-kinder",
-      label: "Elterngeld 与家庭福利",
+      label: "Elterngeld（父母金）与家庭福利",
       prompt: "孩子出生后，我要怎么申请 Elterngeld（父母金）？",
     },
     {
       topic: "rente",
-      label: "养老金",
-      prompt: "我什么时候可以退休？要怎么申请养老金？",
+      label: "Rente（养老金）",
+      prompt: "我什么时候可以退休？要怎么申请 Rente（养老金）？",
     },
     {
       topic: "wohngeld",
@@ -655,7 +655,7 @@ const zhHans: UIStrings = {
     },
     {
       topic: "steuern",
-      label: "税务识别号",
+      label: "Steuer-ID（税务识别号）",
       prompt: "我要怎么取得 Steuer-Identifikationsnummer（税务识别号）？",
     },
     {
@@ -670,7 +670,7 @@ const vi: UIStrings = {
   tagline: "Ngôn ngữ hành chính Đức — bằng lời đơn giản, kèm nguồn chính thức",
   welcomeTitle: "Chúng tôi có thể giúp gì?",
   welcomeSubtitle:
-    "Câu trả lời đơn giản với nguồn chính thức về: Bürgergeld, Kindergeld và trợ cấp gia đình, lương hưu, Wohngeld, mã số thuế, cư trú và nhập tịch. Chúng tôi cũng tìm được cơ quan phụ trách — chỉ cần ghi mã bưu điện của bạn.",
+    "Câu trả lời đơn giản với nguồn chính thức về: Bürgergeld (bảo đảm cơ bản), Kindergeld (tiền trẻ em) và trợ cấp gia đình, Rente (lương hưu), Wohngeld (trợ cấp nhà ở), Steuer-ID (mã số thuế), cư trú và nhập tịch. Chúng tôi cũng tìm được cơ quan phụ trách — chỉ cần ghi mã bưu điện của bạn.",
   inputPlaceholder: "Đặt câu hỏi của bạn …",
   send: "Gửi",
   typing: "Đang soạn câu trả lời",
@@ -693,7 +693,7 @@ const vi: UIStrings = {
   starters: [
     {
       topic: "buergergeld",
-      label: "Bürgergeld / bảo đảm cơ bản",
+      label: "Bürgergeld (bảo đảm cơ bản)",
       prompt: "Tôi có quyền nhận Bürgergeld (bảo đảm cơ bản) không và nộp đơn thế nào?",
     },
     {
@@ -703,13 +703,13 @@ const vi: UIStrings = {
     },
     {
       topic: "familie-und-kinder",
-      label: "Elterngeld và gia đình",
+      label: "Elterngeld (trợ cấp cha mẹ) và gia đình",
       prompt: "Làm sao để xin Elterngeld (trợ cấp cha mẹ) sau khi con tôi chào đời?",
     },
     {
       topic: "rente",
-      label: "Lương hưu",
-      prompt: "Khi nào tôi có thể nghỉ hưu và làm sao để xin lương hưu?",
+      label: "Rente (lương hưu)",
+      prompt: "Khi nào tôi có thể nghỉ hưu và làm sao để xin Rente (lương hưu)?",
     },
     {
       topic: "wohngeld",
@@ -718,7 +718,7 @@ const vi: UIStrings = {
     },
     {
       topic: "steuern",
-      label: "Mã số thuế",
+      label: "Steuer-ID (mã số thuế)",
       prompt: "Làm sao để nhận Steuer-Identifikationsnummer (mã số thuế)?",
     },
     {
@@ -733,7 +733,7 @@ const id: UIStrings = {
   tagline: "Bahasa birokrasi Jerman — dengan bahasa sederhana dan sumber resmi",
   welcomeTitle: "Apa yang bisa kami bantu?",
   welcomeSubtitle:
-    "Jawaban sederhana dengan sumber resmi tentang: Bürgergeld, Kindergeld & tunjangan keluarga, pensiun, Wohngeld, nomor pajak, izin tinggal & kewarganegaraan. Kami juga bisa menemukan kantor yang berwenang — cukup sertakan kode pos Anda.",
+    "Jawaban sederhana dengan sumber resmi tentang: Bürgergeld (jaminan dasar), Kindergeld (tunjangan anak) & tunjangan keluarga, Rente (pensiun), Wohngeld (tunjangan perumahan), Steuer-ID (nomor pajak), izin tinggal & kewarganegaraan. Kami juga bisa menemukan kantor yang berwenang — cukup sertakan kode pos Anda.",
   inputPlaceholder: "Tulis pertanyaan Anda …",
   send: "Kirim",
   typing: "Sedang menyiapkan jawaban",
@@ -756,7 +756,7 @@ const id: UIStrings = {
   starters: [
     {
       topic: "buergergeld",
-      label: "Bürgergeld / jaminan dasar",
+      label: "Bürgergeld (jaminan dasar)",
       prompt: "Apakah saya berhak atas Bürgergeld (jaminan dasar) dan bagaimana mengajukannya?",
     },
     {
@@ -766,13 +766,13 @@ const id: UIStrings = {
     },
     {
       topic: "familie-und-kinder",
-      label: "Elterngeld & keluarga",
+      label: "Elterngeld (tunjangan orang tua) & keluarga",
       prompt: "Bagaimana cara mengajukan Elterngeld (tunjangan orang tua) setelah anak saya lahir?",
     },
     {
       topic: "rente",
-      label: "Pensiun",
-      prompt: "Kapan saya bisa pensiun dan bagaimana cara mengajukannya?",
+      label: "Rente (pensiun)",
+      prompt: "Kapan saya bisa pensiun dan bagaimana cara mengajukan Rente (pensiun)?",
     },
     {
       topic: "wohngeld",
@@ -781,7 +781,7 @@ const id: UIStrings = {
     },
     {
       topic: "steuern",
-      label: "Nomor identifikasi pajak",
+      label: "Steuer-ID (nomor pajak)",
       prompt: "Bagaimana cara mendapatkan Steuer-Identifikationsnummer (nomor identifikasi pajak)?",
     },
     {
@@ -796,7 +796,7 @@ const ko: UIStrings = {
   tagline: "독일 행정 용어를 쉬운 말로 — 공식 출처와 함께",
   welcomeTitle: "무엇을 도와드릴까요?",
   welcomeSubtitle:
-    "공식 출처가 있는 쉬운 답변: Bürgergeld, Kindergeld와 가족 수당, 연금, Wohngeld, 세금 ID, 체류와 귀화. 우편번호를 알려주시면 담당 관청도 찾아드립니다.",
+    "공식 출처가 있는 쉬운 답변: Bürgergeld(기초 생활 보장), Kindergeld(아동 수당)와 가족 수당, Rente(연금), Wohngeld(주거 보조금), Steuer-ID(세금 식별 번호), 체류와 귀화. 우편번호를 알려주시면 담당 관청도 찾아드립니다.",
   inputPlaceholder: "질문을 입력하세요 …",
   send: "보내기",
   typing: "답변 작성 중",
@@ -819,7 +819,7 @@ const ko: UIStrings = {
   starters: [
     {
       topic: "buergergeld",
-      label: "Bürgergeld / 기초 생활 보장",
+      label: "Bürgergeld(기초 생활 보장)",
       prompt: "저는 Bürgergeld(기초 생활 보장)를 받을 수 있나요? 어떻게 신청하나요?",
     },
     {
@@ -829,13 +829,13 @@ const ko: UIStrings = {
     },
     {
       topic: "familie-und-kinder",
-      label: "Elterngeld와 가족",
+      label: "Elterngeld(부모 수당)와 가족",
       prompt: "아이가 태어난 후 Elterngeld(부모 수당)는 어떻게 신청하나요?",
     },
     {
       topic: "rente",
-      label: "연금",
-      prompt: "언제 은퇴할 수 있고 연금은 어떻게 신청하나요?",
+      label: "Rente(연금)",
+      prompt: "언제 은퇴할 수 있고 Rente(연금)는 어떻게 신청하나요?",
     },
     {
       topic: "wohngeld",
@@ -844,7 +844,7 @@ const ko: UIStrings = {
     },
     {
       topic: "steuern",
-      label: "세금 식별 번호",
+      label: "Steuer-ID(세금 식별 번호)",
       prompt: "Steuer-Identifikationsnummer(세금 식별 번호)는 어떻게 발급받나요?",
     },
     {
