@@ -37,7 +37,8 @@ Built for the people official websites leave behind: migrants, refugees, and any
 - **bzst.de** — Steuer-ID, taxes
 - **bamf.de** — residence, asylum, integration
 - **gesetze-im-internet.de** — 9 laws, section by section: SGB I/II/VI/VIII/X/XII, BKGG, WoGG, AufenthG
-- **service.berlin.de** — all ~600 Berlin public services (requirements, documents, fees, deadlines)
+- **service.berlin.de** — all Berlin public services (requirements, documents, fees, deadlines)
+- **elster.de** — using the official online tax portal (registration, certificates, einfachELSTER)
 
 Topic selection follows the documented demand of migration counseling services (MBE reports): unemployment benefits, housing, family benefits and residence status are what people actually need help with.
 
