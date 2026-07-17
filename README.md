@@ -112,8 +112,7 @@ npm run dev                        # http://localhost:3000
 - Land/city-level content (service.berlin.de, muenchen.de …)
 - Weekly re-crawl automation
 - Postgres for metadata/feedback (SQLite today; SQLAlchemy throughout, so it's a `DATABASE_URL` change)
-- Deeper tax coverage (income tax / ELSTER)
-- Test suite
+- Deeper tax coverage (income tax rules — ELSTER portal docs are already in)
 
 ## For contributors
 

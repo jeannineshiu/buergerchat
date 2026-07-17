@@ -72,7 +72,15 @@ npm install
 npm run dev     # http://localhost:3000, expects backend on :8000 (NEXT_PUBLIC_API_URL to override)
 ```
 
-No test suite exists yet for any module; `npm run build` doubles as the frontend typecheck.
+### Tests
+
+```bash
+cd backend && pip install -r requirements-dev.txt && python -m pytest tests/   # 53 tests
+cd crawler && python -m pytest tests/                                          # 21 tests
+cd frontend && npm test                                                        # 13 tests (vitest)
+```
+
+All offline — OpenAI, FAISS files and the PVOG API are stubbed (httpx.MockTransport / fake OpenAI client / temp DATA_DIR). **backend/tests/conftest.py must SET every path env var, never just pop** — `main.py` load_dotenv()s the developer's `.env`, and a popped `DATABASE_URL` comes back pointing at the real `data/metadata.db`, which fixtures then `drop_all()` (this happened; metadata.db is rebuildable from `merged.jsonl` without re-embedding because chunking is deterministic). `npm run build` doubles as the frontend typecheck.
 
 ## Architecture notes
 
