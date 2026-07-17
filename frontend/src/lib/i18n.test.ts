@@ -20,12 +20,18 @@ describe("i18n string table", () => {
     }
   });
 
-  it("every locale ships the three starter prompts", () => {
+  it("every locale ships the same starter prompts in MVP-priority order", () => {
+    // No "find the authority" starter — that's never a first question;
+    // the welcome subtitle advertises the PLZ lookup instead.
     for (const [code, strings] of Object.entries(UI_STRINGS)) {
       expect(strings.starters.map((s) => s.topic), code).toEqual([
         "buergergeld",
         "kindergeld",
-        "behoerde",
+        "familie-und-kinder",
+        "rente",
+        "wohngeld",
+        "steuern",
+        "aufenthalt",
       ]);
     }
   });

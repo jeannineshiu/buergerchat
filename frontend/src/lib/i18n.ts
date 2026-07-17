@@ -72,9 +72,29 @@ const de: UIStrings = {
       prompt: "Wer bekommt Kindergeld und wie beantrage ich es?",
     },
     {
-      topic: "behoerde",
-      label: "Die richtige Behörde finden",
-      prompt: "Welches Amt ist für mein Anliegen zuständig?",
+      topic: "familie-und-kinder",
+      label: "Elterngeld & Familie",
+      prompt: "Wie beantrage ich Elterngeld nach der Geburt meines Kindes?",
+    },
+    {
+      topic: "rente",
+      label: "Rente",
+      prompt: "Wann kann ich in Rente gehen und wie stelle ich den Antrag?",
+    },
+    {
+      topic: "wohngeld",
+      label: "Wohngeld",
+      prompt: "Habe ich Anspruch auf Wohngeld und wie beantrage ich es?",
+    },
+    {
+      topic: "steuern",
+      label: "Steuer-ID",
+      prompt: "Wie bekomme ich meine Steuer-Identifikationsnummer?",
+    },
+    {
+      topic: "aufenthalt",
+      label: "Aufenthalt & Einbürgerung",
+      prompt: "Welche Voraussetzungen gelten für die deutsche Einbürgerung?",
     },
   ],
 };
@@ -115,9 +135,29 @@ const en: UIStrings = {
       prompt: "Who gets Kindergeld and how do I apply for it?",
     },
     {
-      topic: "behoerde",
-      label: "Find the right authority",
-      prompt: "Which office is responsible for my request?",
+      topic: "familie-und-kinder",
+      label: "Elterngeld & family",
+      prompt: "How do I apply for Elterngeld (parental allowance) after my child is born?",
+    },
+    {
+      topic: "rente",
+      label: "Pension",
+      prompt: "When can I retire and how do I apply for my pension?",
+    },
+    {
+      topic: "wohngeld",
+      label: "Wohngeld (housing benefit)",
+      prompt: "Am I entitled to Wohngeld (housing benefit) and how do I apply?",
+    },
+    {
+      topic: "steuern",
+      label: "Tax ID",
+      prompt: "How do I get my Steuer-Identifikationsnummer (tax ID)?",
+    },
+    {
+      topic: "aufenthalt",
+      label: "Residence & citizenship",
+      prompt: "What are the requirements for German citizenship?",
     },
   ],
 };
@@ -158,9 +198,29 @@ const tr: UIStrings = {
       prompt: "Kindergeld'i kim alır ve nasıl başvurabilirim?",
     },
     {
-      topic: "behoerde",
-      label: "Doğru daireyi bulun",
-      prompt: "Benim işim için hangi daire yetkili?",
+      topic: "familie-und-kinder",
+      label: "Elterngeld ve aile",
+      prompt: "Çocuğumun doğumundan sonra Elterngeld (ebeveyn parası) başvurusunu nasıl yaparım?",
+    },
+    {
+      topic: "rente",
+      label: "Emeklilik",
+      prompt: "Ne zaman emekli olabilirim ve emeklilik başvurusunu nasıl yaparım?",
+    },
+    {
+      topic: "wohngeld",
+      label: "Wohngeld (kira yardımı)",
+      prompt: "Wohngeld (kira yardımı) alma hakkım var mı ve nasıl başvururum?",
+    },
+    {
+      topic: "steuern",
+      label: "Vergi kimlik numarası",
+      prompt: "Steuer-Identifikationsnummer'i (vergi kimlik numarası) nasıl alırım?",
+    },
+    {
+      topic: "aufenthalt",
+      label: "Oturum ve vatandaşlık",
+      prompt: "Alman vatandaşlığı için hangi şartlar geçerli?",
     },
   ],
 };
@@ -201,9 +261,29 @@ const ar: UIStrings = {
       prompt: "من يحصل على Kindergeld وكيف أقدم الطلب؟",
     },
     {
-      topic: "behoerde",
-      label: "إيجاد الجهة المختصة",
-      prompt: "أي مكتب مسؤول عن طلبي؟",
+      topic: "familie-und-kinder",
+      label: "Elterngeld والأسرة",
+      prompt: "كيف أتقدم بطلب Elterngeld (إعانة الوالدين) بعد ولادة طفلي؟",
+    },
+    {
+      topic: "rente",
+      label: "التقاعد",
+      prompt: "متى يمكنني التقاعد وكيف أتقدم بطلب المعاش؟",
+    },
+    {
+      topic: "wohngeld",
+      label: "Wohngeld (إعانة السكن)",
+      prompt: "هل يحق لي الحصول على Wohngeld (إعانة السكن) وكيف أقدم الطلب؟",
+    },
+    {
+      topic: "steuern",
+      label: "الرقم الضريبي",
+      prompt: "كيف أحصل على Steuer-Identifikationsnummer (الرقم الضريبي)؟",
+    },
+    {
+      topic: "aufenthalt",
+      label: "الإقامة والتجنيس",
+      prompt: "ما هي شروط الحصول على الجنسية الألمانية؟",
     },
   ],
 };
@@ -244,9 +324,29 @@ const fa: UIStrings = {
       prompt: "چه کسی Kindergeld می‌گیرد و چگونه درخواست بدهم؟",
     },
     {
-      topic: "behoerde",
-      label: "یافتن اداره مسئول",
-      prompt: "کدام اداره مسئول کار من است؟",
+      topic: "familie-und-kinder",
+      label: "Elterngeld و خانواده",
+      prompt: "چگونه پس از تولد فرزندم برای Elterngeld (کمک‌هزینه والدین) درخواست بدهم؟",
+    },
+    {
+      topic: "rente",
+      label: "بازنشستگی",
+      prompt: "چه زمانی می‌توانم بازنشسته شوم و چگونه درخواست مستمری بدهم؟",
+    },
+    {
+      topic: "wohngeld",
+      label: "Wohngeld (کمک‌هزینه مسکن)",
+      prompt: "آیا حق دریافت Wohngeld (کمک‌هزینه مسکن) را دارم و چگونه درخواست بدهم؟",
+    },
+    {
+      topic: "steuern",
+      label: "شماره شناسایی مالیاتی",
+      prompt: "چگونه Steuer-Identifikationsnummer (شماره شناسایی مالیاتی) را دریافت کنم؟",
+    },
+    {
+      topic: "aufenthalt",
+      label: "اقامت و تابعیت",
+      prompt: "شرایط دریافت تابعیت آلمان چیست؟",
     },
   ],
 };
@@ -287,9 +387,29 @@ const uk: UIStrings = {
       prompt: "Хто отримує Kindergeld і як подати заяву?",
     },
     {
-      topic: "behoerde",
-      label: "Знайти потрібну установу",
-      prompt: "Яка установа відповідає за моє питання?",
+      topic: "familie-und-kinder",
+      label: "Elterngeld і сім'я",
+      prompt: "Як подати заяву на Elterngeld (батьківську допомогу) після народження дитини?",
+    },
+    {
+      topic: "rente",
+      label: "Пенсія",
+      prompt: "Коли я можу вийти на пенсію і як подати заяву?",
+    },
+    {
+      topic: "wohngeld",
+      label: "Wohngeld (житлова допомога)",
+      prompt: "Чи маю я право на Wohngeld (житлову допомогу) і як її оформити?",
+    },
+    {
+      topic: "steuern",
+      label: "Податковий номер",
+      prompt: "Як отримати Steuer-Identifikationsnummer (податковий номер)?",
+    },
+    {
+      topic: "aufenthalt",
+      label: "Проживання та громадянство",
+      prompt: "Які умови отримання німецького громадянства?",
     },
   ],
 };
@@ -330,9 +450,29 @@ const ru: UIStrings = {
       prompt: "Кто получает Kindergeld и как подать заявление?",
     },
     {
-      topic: "behoerde",
-      label: "Найти нужное ведомство",
-      prompt: "Какое ведомство отвечает за мой вопрос?",
+      topic: "familie-und-kinder",
+      label: "Elterngeld и семья",
+      prompt: "Как подать заявление на Elterngeld (родительское пособие) после рождения ребёнка?",
+    },
+    {
+      topic: "rente",
+      label: "Пенсия",
+      prompt: "Когда я могу выйти на пенсию и как подать заявление?",
+    },
+    {
+      topic: "wohngeld",
+      label: "Wohngeld (жилищное пособие)",
+      prompt: "Имею ли я право на Wohngeld (жилищное пособие) и как его оформить?",
+    },
+    {
+      topic: "steuern",
+      label: "Налоговый номер",
+      prompt: "Как получить Steuer-Identifikationsnummer (налоговый номер)?",
+    },
+    {
+      topic: "aufenthalt",
+      label: "Пребывание и гражданство",
+      prompt: "Каковы условия получения немецкого гражданства?",
     },
   ],
 };
@@ -373,9 +513,29 @@ const pl: UIStrings = {
       prompt: "Kto dostaje Kindergeld i jak złożyć wniosek?",
     },
     {
-      topic: "behoerde",
-      label: "Znajdź właściwy urząd",
-      prompt: "Który urząd jest właściwy dla mojej sprawy?",
+      topic: "familie-und-kinder",
+      label: "Elterngeld i rodzina",
+      prompt: "Jak złożyć wniosek o Elterngeld (zasiłek rodzicielski) po narodzinach dziecka?",
+    },
+    {
+      topic: "rente",
+      label: "Emerytura",
+      prompt: "Kiedy mogę przejść na emeryturę i jak złożyć wniosek?",
+    },
+    {
+      topic: "wohngeld",
+      label: "Wohngeld (dodatek mieszkaniowy)",
+      prompt: "Czy mam prawo do Wohngeld (dodatku mieszkaniowego) i jak go otrzymać?",
+    },
+    {
+      topic: "steuern",
+      label: "Numer identyfikacji podatkowej",
+      prompt: "Jak otrzymać Steuer-Identifikationsnummer (numer identyfikacji podatkowej)?",
+    },
+    {
+      topic: "aufenthalt",
+      label: "Pobyt i obywatelstwo",
+      prompt: "Jakie są warunki uzyskania niemieckiego obywatelstwa?",
     },
   ],
 };
@@ -416,9 +576,29 @@ const zhHant: UIStrings = {
       prompt: "誰可以領 Kindergeld？要怎麼申請？",
     },
     {
-      topic: "behoerde",
-      label: "找到對的機關",
-      prompt: "我的事情該找哪個機關辦理？",
+      topic: "familie-und-kinder",
+      label: "Elterngeld 與家庭福利",
+      prompt: "孩子出生後，我要怎麼申請 Elterngeld（父母金）？",
+    },
+    {
+      topic: "rente",
+      label: "退休金",
+      prompt: "我什麼時候可以退休？要怎麼申請退休金？",
+    },
+    {
+      topic: "wohngeld",
+      label: "Wohngeld（住房補貼）",
+      prompt: "我有資格領 Wohngeld（住房補貼）嗎？要怎麼申請？",
+    },
+    {
+      topic: "steuern",
+      label: "稅務識別號",
+      prompt: "我要怎麼取得 Steuer-Identifikationsnummer（稅務識別號）？",
+    },
+    {
+      topic: "aufenthalt",
+      label: "居留與入籍",
+      prompt: "申請德國入籍需要符合哪些條件？",
     },
   ],
 };
@@ -459,9 +639,29 @@ const zhHans: UIStrings = {
       prompt: "谁可以领 Kindergeld？要怎么申请？",
     },
     {
-      topic: "behoerde",
-      label: "找到对的机关",
-      prompt: "我的事情该找哪个机关办理？",
+      topic: "familie-und-kinder",
+      label: "Elterngeld 与家庭福利",
+      prompt: "孩子出生后，我要怎么申请 Elterngeld（父母金）？",
+    },
+    {
+      topic: "rente",
+      label: "养老金",
+      prompt: "我什么时候可以退休？要怎么申请养老金？",
+    },
+    {
+      topic: "wohngeld",
+      label: "Wohngeld（住房补贴）",
+      prompt: "我有资格领 Wohngeld（住房补贴）吗？要怎么申请？",
+    },
+    {
+      topic: "steuern",
+      label: "税务识别号",
+      prompt: "我要怎么取得 Steuer-Identifikationsnummer（税务识别号）？",
+    },
+    {
+      topic: "aufenthalt",
+      label: "居留与入籍",
+      prompt: "申请德国入籍需要符合哪些条件？",
     },
   ],
 };
@@ -502,9 +702,29 @@ const vi: UIStrings = {
       prompt: "Ai được nhận Kindergeld và nộp đơn thế nào?",
     },
     {
-      topic: "behoerde",
-      label: "Tìm đúng cơ quan",
-      prompt: "Cơ quan nào phụ trách việc của tôi?",
+      topic: "familie-und-kinder",
+      label: "Elterngeld và gia đình",
+      prompt: "Làm sao để xin Elterngeld (trợ cấp cha mẹ) sau khi con tôi chào đời?",
+    },
+    {
+      topic: "rente",
+      label: "Lương hưu",
+      prompt: "Khi nào tôi có thể nghỉ hưu và làm sao để xin lương hưu?",
+    },
+    {
+      topic: "wohngeld",
+      label: "Wohngeld (trợ cấp nhà ở)",
+      prompt: "Tôi có được nhận Wohngeld (trợ cấp nhà ở) không và xin như thế nào?",
+    },
+    {
+      topic: "steuern",
+      label: "Mã số thuế",
+      prompt: "Làm sao để nhận Steuer-Identifikationsnummer (mã số thuế)?",
+    },
+    {
+      topic: "aufenthalt",
+      label: "Cư trú và nhập quốc tịch",
+      prompt: "Điều kiện để nhập quốc tịch Đức là gì?",
     },
   ],
 };
@@ -545,9 +765,29 @@ const id: UIStrings = {
       prompt: "Siapa yang mendapat Kindergeld dan bagaimana cara mengajukannya?",
     },
     {
-      topic: "behoerde",
-      label: "Temukan kantor yang tepat",
-      prompt: "Kantor mana yang berwenang untuk urusan saya?",
+      topic: "familie-und-kinder",
+      label: "Elterngeld & keluarga",
+      prompt: "Bagaimana cara mengajukan Elterngeld (tunjangan orang tua) setelah anak saya lahir?",
+    },
+    {
+      topic: "rente",
+      label: "Pensiun",
+      prompt: "Kapan saya bisa pensiun dan bagaimana cara mengajukannya?",
+    },
+    {
+      topic: "wohngeld",
+      label: "Wohngeld (tunjangan perumahan)",
+      prompt: "Apakah saya berhak atas Wohngeld (tunjangan perumahan) dan bagaimana mengajukannya?",
+    },
+    {
+      topic: "steuern",
+      label: "Nomor identifikasi pajak",
+      prompt: "Bagaimana cara mendapatkan Steuer-Identifikationsnummer (nomor identifikasi pajak)?",
+    },
+    {
+      topic: "aufenthalt",
+      label: "Izin tinggal & kewarganegaraan",
+      prompt: "Apa saja syarat untuk menjadi warga negara Jerman?",
     },
   ],
 };
@@ -588,9 +828,29 @@ const ko: UIStrings = {
       prompt: "Kindergeld는 누가 받을 수 있고 어떻게 신청하나요?",
     },
     {
-      topic: "behoerde",
-      label: "담당 관청 찾기",
-      prompt: "제 용무는 어느 관청이 담당하나요?",
+      topic: "familie-und-kinder",
+      label: "Elterngeld와 가족",
+      prompt: "아이가 태어난 후 Elterngeld(부모 수당)는 어떻게 신청하나요?",
+    },
+    {
+      topic: "rente",
+      label: "연금",
+      prompt: "언제 은퇴할 수 있고 연금은 어떻게 신청하나요?",
+    },
+    {
+      topic: "wohngeld",
+      label: "Wohngeld(주거 보조금)",
+      prompt: "저는 Wohngeld(주거 보조금)를 받을 수 있나요? 어떻게 신청하나요?",
+    },
+    {
+      topic: "steuern",
+      label: "세금 식별 번호",
+      prompt: "Steuer-Identifikationsnummer(세금 식별 번호)는 어떻게 발급받나요?",
+    },
+    {
+      topic: "aufenthalt",
+      label: "체류와 귀화",
+      prompt: "독일 귀화 조건은 무엇인가요?",
     },
   ],
 };

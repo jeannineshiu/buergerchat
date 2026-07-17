@@ -48,9 +48,13 @@ then components; first impression is the priority.
 
 ## Open decisions (deliberate deviations, revisit if desired)
 
-1. ~~Emoji on starter cards~~ — resolved: Heroicons outlines (banknotes /
-   user-group / building-library) in soft blue chips keep the icons
-   language-neutral while satisfying the no-emoji rule.
+1. ~~Emoji on starter cards~~ — resolved: Heroicons outlines in soft blue
+   keep the icons language-neutral while satisfying the no-emoji rule.
+   2026-07-19: starter cards became compact suggestion pills (the
+   ChatGPT/Gemini pattern) — seven topics (all MVP + knowledge-base themes,
+   no "find the authority": never a first question) would overwhelm as
+   full-text cards; the pill shows icon + topic label, `title` reveals the
+   full prompt, clicking sends it.
 2. **Sub-14px meta text**: source-card domain labels (11px) and the rename
    notice (13px) are intentionally de-emphasized; body text everywhere else
    is 15px. Acceptable; bump to 12/14 if readability complaints appear.
