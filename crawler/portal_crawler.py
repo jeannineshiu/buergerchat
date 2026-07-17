@@ -46,7 +46,8 @@ class Site:
     default_topic: str | None = None  # None: skip pages no rule matches
     sitemap_url: str | None = None
     seed_urls: list[str] = field(default_factory=list)  # BFS mode when no sitemap
-    bfs_path_prefix: str = ""  # BFS follows only links under this path
+    # BFS follows only links under this path (str or tuple of prefixes)
+    bfs_path_prefix: str | tuple[str, ...] = ""
     bfs_max_depth: int = 3
     url_include: str = ""  # regex a URL must match ("" = all)
     url_exclude: list[str] = field(default_factory=list)  # path prefixes (robots Disallow)
@@ -115,6 +116,37 @@ SITES = {
         url_exclude=["/terminvereinbarung/", "/export"],
         topic_rules=[("/dienstleistung/", "berlin")],
         default_topic=None,  # never save the index page itself
+        crawl_delay=2.0,
+    ),
+    "elster": Site(
+        name="elster",
+        host="www.elster.de",
+        # No robots.txt (301 → 404) and no sitemap. Public content is the
+        # portal-usage documentation (registration, certificates,
+        # einfachELSTER …) under the two infoseite paths — the actual tax-form
+        # guidance sits behind login and is not crawlable.
+        seed_urls=[
+            "https://www.elster.de/eportal/infoseite/nutzen_und_vorteile",
+            "https://www.elster.de/elsterweb/infoseite/benutzergruppen",
+            "https://www.elster.de/eportal/infoseite/einfachelsterplus",
+        ],
+        bfs_path_prefix=("/eportal/infoseite", "/elsterweb/infoseite"),
+        # No query strings: ?locale=en_US etc. are language variants of the
+        # same page — the canonical German version is query-less.
+        url_include=r"/infoseite/[^?]+$",
+        # B2B/marketing/legal-boilerplate pages — no citizen value, and the
+        # license text alone would be ~150 junk chunks.
+        url_exclude=[
+            "/elsterweb/infoseite/download_elster-transfer",
+            "/elsterweb/infoseite/elster_eine_erfolgsstory",
+            "/elsterweb/infoseite/verfahren_elster-transfer",
+            "/elsterweb/infoseite/elstertransfer",
+            "/elsterweb/infoseite/entwickler",
+            "/eportal/infoseite/presse_und_medien",
+        ],
+        bfs_max_depth=3,
+        topic_rules=[],
+        default_topic="steuern",
         crawl_delay=2.0,
     ),
     "bamf": Site(

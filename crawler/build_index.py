@@ -37,6 +37,7 @@ INPUT_FILES = [
     (CRAWLER_OUTPUT_DIR / "portal_bmwsb.jsonl", "bmwsb"),
     (CRAWLER_OUTPUT_DIR / "portal_bamf.jsonl", "bamf"),
     (CRAWLER_OUTPUT_DIR / "portal_berlin.jsonl", "service.berlin.de"),
+    (CRAWLER_OUTPUT_DIR / "portal_elster.jsonl", "elster"),
 ]
 
 EMBEDDING_MODEL = "text-embedding-3-small"
