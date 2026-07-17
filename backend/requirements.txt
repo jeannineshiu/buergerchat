@@ -9,5 +9,6 @@ faiss-cpu==1.8.0
 numpy<2  # faiss-cpu 1.8.0 segfaults/ImportErrors under NumPy 2.x (see CLAUDE.md)
 openai==1.35.10
 httpx==0.27.0
+slowapi==0.1.9
 langchain-text-splitters==0.2.2
 python-dotenv==1.0.1
