@@ -13,13 +13,14 @@ crawler and backend are independent modules with separate dependency sets
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 import faiss
 import numpy as np
 from dotenv import load_dotenv
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from openai import OpenAI
+from openai import OpenAI, RateLimitError
 from sqlalchemy import Column, Integer, String, Text, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
@@ -120,7 +121,18 @@ def embed_texts(client: OpenAI, texts: list[str]) -> list[list[float]]:
     embeddings = []
     for i in range(0, len(texts), EMBED_BATCH_SIZE):
         batch = texts[i : i + EMBED_BATCH_SIZE]
-        response = client.embeddings.create(model=EMBEDDING_MODEL, input=batch)
+        # The corpus outgrew the 1M tokens/min embedding limit; the SDK's
+        # built-in retries alone give up too early, so back off explicitly.
+        for attempt in range(6):
+            try:
+                response = client.embeddings.create(model=EMBEDDING_MODEL, input=batch)
+                break
+            except RateLimitError:
+                if attempt == 5:
+                    raise
+                wait = 2 ** attempt * 5
+                print(f"rate limited — waiting {wait}s", file=sys.stderr)
+                time.sleep(wait)
         embeddings.extend(item.embedding for item in response.data)
         print(f"embedded {min(i + EMBED_BATCH_SIZE, len(texts))}/{len(texts)}")
     return embeddings
