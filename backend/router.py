@@ -52,6 +52,27 @@ AUTHORITY_KEYWORDS = [
     "an wen",
     "in meiner nähe",
     "in meiner naehe",
+    # Asking for contact details or where to report IS asking for the
+    # responsible authority ("gib mir die kontakt daten wie telefon nummer",
+    # "wo soll ich mich melden?") — without these the PVOG lookup never
+    # fired and the bot claimed to have no contact information.
+    "kontakt",
+    "telefon",
+    "e-mail",
+    "email",
+    "adresse",
+    "anschrift",
+    "öffnungszeiten",
+    "oeffnungszeiten",
+    "sprechzeiten",
+    "mich melden",
+    "wo melde",
+    "contact",
+    "phone",
+    "address",
+    "which office",
+    "opening hours",
+    "where should i go",
 ]
 
 PLZ_PATTERN = re.compile(r"\b\d{5}\b")

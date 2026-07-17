@@ -30,6 +30,15 @@ class TestWantsAuthority:
         assert router.wants_authority("Wo beantrage ich Kindergeld?")
         assert router.wants_authority("Wo ist mein Jobcenter?")
 
+    def test_contact_details_request_is_authority_intent(self):
+        # Regression: these two turns from a real session never triggered
+        # the PVOG lookup, so the bot claimed to have no contact details
+        # despite knowing the user's PLZ.
+        assert router.wants_authority("gib mir die kontakt daten wie telefon nummer oder email")
+        assert router.wants_authority("wo soll ich mich melden? Ich wohne in 10365 Berlin")
+        assert router.wants_authority("Wie ist die Adresse der Elterngeldstelle?")
+        assert router.wants_authority("What is the phone number of the office?")
+
     def test_no_intent_on_knowledge_question(self):
         assert not router.wants_authority("Was ist Bürgergeld?")
         assert not router.wants_authority("Wie hoch ist das Kindergeld?")

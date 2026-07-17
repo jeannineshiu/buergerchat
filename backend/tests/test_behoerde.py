@@ -125,6 +125,18 @@ class TestFind:
         assert result.street is None
 
 
+class TestTopicQueries:
+    def test_every_router_topic_has_pvog_queries(self):
+        # A router topic without a TOPIC_QUERIES entry falls back to the raw
+        # user message, which for contact-style questions ("gib mir die
+        # kontakt daten") matches nothing in PVOG. familie-und-kinder was
+        # missing and Elterngeld lookups silently failed.
+        from behoerde import TOPIC_QUERIES
+        from router import TOPIC_KEYWORDS
+
+        assert set(TOPIC_KEYWORDS) <= set(TOPIC_QUERIES)
+
+
 class TestHelpers:
     def test_strip_stopwords(self):
         assert strip_stopwords("Wo kann ich meine Wohnung anmelden?") == "Wohnung anmelden"

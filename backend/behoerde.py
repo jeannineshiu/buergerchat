@@ -27,6 +27,7 @@ TOPIC_QUERIES = {
     "buergergeld": ["Bürgergeld beantragen", "Grundsicherungsgeld beantragen"],
     "kindergeld": ["Kindergeld beantragen"],
     "arbeitslos": ["Arbeitslosengeld beantragen"],
+    "familie-und-kinder": ["Elterngeld beantragen", "Unterhaltsvorschuss beantragen"],
     "rente": ["Altersrente beantragen", "Rente beantragen"],
     "wohngeld": ["Wohngeld beantragen"],
     "steuern": ["Steuerliche Identifikationsnummer"],
