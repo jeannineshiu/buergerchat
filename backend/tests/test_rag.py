@@ -24,8 +24,10 @@ SAME_PAGE_CHUNKS = [
 ]
 
 # Same article syndicated under a different per-Ort URL (arbeitsagentur.de
-# pattern) — identical title, distinct URL, must also be deduped.
+# pattern) — identical title, distinct URL, must also be deduped. The second
+# copy differs only by whitespace in the title (real data has both variants).
 SYNDICATED_CHUNK = (5, "Kindergeld Teil eins: Anspruch und Höhe im Überblick.")
+SYNDICATED_WHITESPACE_CHUNK = (6, "Kindergeld Teil eins: Anspruch und Höhe genauer.")
 
 
 @pytest.fixture()
@@ -43,11 +45,13 @@ def pipeline(data_dir, fake_openai, monkeypatch):
         session.add(Chunk(id=cid, url="https://example.org/kindergeld", title="Kindergeld", content=text))
     session.add(Chunk(id=SYNDICATED_CHUNK[0], url="https://example.org/vor-ort/x/kindergeld",
                       title="Kindergeld", content=SYNDICATED_CHUNK[1]))
+    session.add(Chunk(id=SYNDICATED_WHITESPACE_CHUNK[0], url="https://example.org/vor-ort/y/kindergeld",
+                      title="Kindergeld ", content=SYNDICATED_WHITESPACE_CHUNK[1]))
     session.commit()
     session.close()
 
     # Build the FAISS index from the same fake embeddings the query will use.
-    all_chunks = CHUNKS + SAME_PAGE_CHUNKS + [SYNDICATED_CHUNK]
+    all_chunks = CHUNKS + SAME_PAGE_CHUNKS + [SYNDICATED_CHUNK, SYNDICATED_WHITESPACE_CHUNK]
     vectors = np.array(
         [fake_openai.embeddings.create(model="x", input=text).data[0].embedding for _, text in all_chunks],
         dtype="float32",
@@ -91,14 +95,14 @@ class TestQuery:
         assert sources[0]["url"] == "https://example.org/0"
 
     def test_sources_deduped_by_url(self, pipeline, monkeypatch):
-        monkeypatch.setattr(rag, "TOP_K", 5)
+        monkeypatch.setattr(rag, "TOP_K", 7)  # retrieve everything → all dupes present
         # Both halves of the Kindergeld page should be retrieved (identical
         # first words → similar fake embeddings), but the source appears once.
         _, sources = pipeline.query("Kindergeld Teil eins: Anspruch und Höhe der Leistung.")
         urls = [s["url"] for s in sources]
-        titles = [s["title"] for s in sources]
+        norm_titles = [" ".join(s["title"].split()).lower() for s in sources]
         assert len(urls) == len(set(urls))
-        assert len(titles) == len(set(titles))  # syndicated per-Ort copy deduped
+        assert len(norm_titles) == len(set(norm_titles))  # incl. whitespace variants
         assert "https://example.org/kindergeld" in urls
 
     def test_authority_not_duplicated_when_also_retrieved(self, pipeline):

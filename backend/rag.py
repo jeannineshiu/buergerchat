@@ -307,11 +307,14 @@ class RAGPipeline:
         seen_urls: set[str] = set()
         seen_titles: set[str] = set()
         for c in ordered_chunks:
-            if c.url in seen_urls or (c.title and c.title in seen_titles):
+            # Normalized title: syndicated copies differ by stray whitespace
+            # ("Schulabschluss:  Was" vs "Schulabschluss: Was").
+            title_key = " ".join((c.title or "").split()).lower()
+            if c.url in seen_urls or (title_key and title_key in seen_titles):
                 continue
             seen_urls.add(c.url)
-            if c.title:
-                seen_titles.add(c.title)
+            if title_key:
+                seen_titles.add(title_key)
             sources.append({"title": c.title, "url": c.url})
         if authority is not None:
             authority_source = authority.source()
