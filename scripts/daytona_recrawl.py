@@ -19,6 +19,7 @@ After --download, ship it to Railway with scripts/upload-index.sh.
 import argparse
 import os
 import sys
+import time
 from pathlib import Path
 
 from daytona import (
@@ -40,6 +41,19 @@ STATE = "/state"
 CRAWL_TIMEOUT_S = 4 * 3600
 
 
+def get_ready_volume(daytona: Daytona, create: bool):
+    # A freshly created volume reports pending_create for a few seconds;
+    # attaching it in that state fails sandbox creation.
+    volume = daytona.volume.get(VOLUME_NAME, create=create)
+    for _ in range(30):
+        state = getattr(volume.state, "value", str(volume.state))
+        if state == "ready":
+            return volume
+        time.sleep(2)
+        volume = daytona.volume.get(VOLUME_NAME, create=False)
+    raise SystemExit(f"volume {VOLUME_NAME} not ready (state: {volume.state})")
+
+
 def run(sandbox, command: str, timeout: int = 600) -> str:
     print(f"$ {command}")
     response = sandbox.process.exec(command, timeout=timeout)
@@ -50,7 +64,7 @@ def run(sandbox, command: str, timeout: int = 600) -> str:
 
 
 def recrawl(daytona: Daytona) -> None:
-    volume = daytona.volume.get(VOLUME_NAME, create=True)
+    volume = get_ready_volume(daytona, create=True)
     sandbox = daytona.create(
         CreateSandboxFromImageParams(
             image="python:3.11-slim",
@@ -81,7 +95,7 @@ def recrawl(daytona: Daytona) -> None:
 
 
 def download(daytona: Daytona) -> None:
-    volume = daytona.volume.get(VOLUME_NAME, create=False)
+    volume = get_ready_volume(daytona, create=False)
     sandbox = daytona.create(
         CreateSandboxFromImageParams(
             image="python:3.11-slim",
