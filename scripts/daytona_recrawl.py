@@ -119,18 +119,20 @@ def recrawl(daytona: Daytona) -> None:
         run(sandbox, "apt-get update -qq && apt-get install -y -qq sqlite3", timeout=900)
         sandbox.fs.upload_file(sources_tarball(), "/tmp/sources.tar.gz")
         run(sandbox, "mkdir -p /work && tar xzf /tmp/sources.tar.gz -C /work")
-        # Crawl state lives in the volume: the crawlers append to
-        # crawler/output/*.jsonl and skip already-crawled URLs, so pointing
-        # the output dir at /state makes every weekly run incremental.
-        run(sandbox, f"mkdir -p {STATE}/output {STATE}/data && rm -rf /work/crawler/output && ln -s {STATE}/output /work/crawler/output")
         run(sandbox, "pip install -q -r /work/crawler/requirements.txt", timeout=1200)
-        # Crawl, build and publish in ONE exec: the command keeps running
-        # inside the sandbox even if this driver dies, so a completed crawl
-        # always lands in the volume. Only a consistent index+metadata pair
-        # is published, and only after the build fully succeeded.
+        # The volume is a FUSE/object-storage mount: appending to existing
+        # files fails with EPERM, so the crawlers must never write to it
+        # directly. Copy last week's state to local disk, crawl there, and
+        # sync whole files back. Crawl + build + publish is ONE exec: it
+        # keeps running inside the sandbox even if this driver dies, and
+        # only a consistent index+metadata pair is published, only after
+        # the build fully succeeded.
         print(run(
             sandbox,
-            "cd /work && bash scripts/recrawl.sh"
+            f"mkdir -p {STATE}/output {STATE}/data /work/crawler/output"
+            f" && (cp {STATE}/output/*.jsonl /work/crawler/output/ 2>/dev/null || true)"
+            " && cd /work && bash scripts/recrawl.sh"
+            f" && cp /work/crawler/output/*.jsonl {STATE}/output/"
             f" && cp /work/data/faiss_index.bin /work/data/metadata.db {STATE}/data/"
             f" && date -u +%FT%TZ > {STATE}/data/published_at",
             timeout=CRAWL_TIMEOUT_S,
