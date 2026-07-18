@@ -6,6 +6,18 @@ BürgerChat is an AI assistant that helps people in Germany understand their rig
 
 Built for the people official websites leave behind: migrants, refugees, and anyone who reads "Bedarfsgemeinschaft" and gives up.
 
+## Why this exists
+
+The gap between "having a right" and "getting it" in Germany is large, documented — and mostly a language and complexity problem:
+
+- **25.2 million people in Germany — 30.4% — have a migration background** ([Mikrozensus 2024, Destatis](https://www.destatis.de/DE/Themen/Gesellschaft-Umwelt/Bevoelkerung/Migration-Integration/_inhalt.html)). 12.2 million hold no German passport, and about 63% immigrated themselves — many deal with German bureaucracy in a second language.
+- **Official language fails almost everyone**: in a representative 2024 survey, only **4%** said they find Behördensprache understandable, over three quarters feel overwhelmed by it, and **one in four has already suffered a financial disadvantage** because of official letters or forms they couldn't understand ([Taxfix/Appinio survey, May 2024, n>2,000](https://taxfix.de/pm-behoerdensprache/)).
+- **6.2 million German-speaking adults (12.1% of ages 18–64) read and write at low literacy levels** ([LEO 2018, Universität Hamburg](https://leo.blogs.uni-hamburg.de/leo-2018-62-millionen-gering-literalisierte-erwachsene/)). Einfache Sprache is not a nice-to-have; for them it is the access requirement.
+- **Billions in benefits go unclaimed** ("verdeckte Armut"). Research puts non-take-up at roughly **60% for Grundsicherung im Alter** ([DIW 2019](https://www.diw.de/de/diw_01.c.699957.de/publikationen/wochenberichte/2019_49_1/starke_nichtinanspruchnahme_von_grundsicherung_deutet_auf_hohe_verdeckte_altersarmut.html)), **64–88% for Kinderzuschlag** and **~50–80% for Wohngeld**, and over a third for Bürgergeld ([BMAS research report 668](https://www.bmas.de/DE/Service/Publikationen/Forschungsberichte/fb-668-bestandsaufnahme-nichtinanspruchnahme-sozialleistungen.html)). The documented causes — not knowing the benefit exists, not understanding the process, stigma — are exactly what a plain-language assistant with an authority finder attacks.
+- **Counseling doesn't scale to the demand**: the federally funded migration counseling service (MBE) reached **542,982 people in 2024**, up from 205,000 in 2012, across ~900 offices ([migrationsberatung.org](https://www.migrationsberatung.org/de/ueber-die-mbe)) — while its umbrella organisations report [chronic underfunding](https://www.bagfw.de/veroeffentlichungen/stellungnahmen/positionen/detail/migrationsberatung-fuer-erwachsene-zuwanderer-finanzielle-ausstattung-reicht-noch-immer-nicht-aus). A 24/7 assistant doesn't replace counselors, but it answers the recurring questions and points to the right office — the two things the MBE demand reports show people need most.
+
+BürgerChat's topic priorities (benefits, family, housing, residence) follow that documented demand.
+
 ## What it can do
 
 💬 **Answer questions about**
