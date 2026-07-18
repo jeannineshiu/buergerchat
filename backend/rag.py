@@ -192,6 +192,24 @@ class RAGPipeline:
         if not self.load():
             raise IndexNotReadyError(str(resolve_faiss_path()))
 
+    def retrieve(self, query: str) -> list[Chunk]:
+        """Embed the query and return the TOP_K nearest chunks in rank
+        order — the exact retrieval path /chat uses (evals reuse it)."""
+        self._ensure_loaded()
+        embed_response = self.client.embeddings.create(
+            model=EMBEDDING_MODEL, input=query
+        )
+        query_vector = np.array([embed_response.data[0].embedding], dtype="float32")
+        faiss.normalize_L2(query_vector)
+
+        _, ids = self.index.search(query_vector, TOP_K)
+        hit_ids = [int(i) for i in ids[0] if i != -1]
+
+        session = SessionLocal()
+        chunks_by_id = {c.id: c for c in session.query(Chunk).filter(Chunk.id.in_(hit_ids)).all()}
+        session.close()
+        return [chunks_by_id[i] for i in hit_ids if i in chunks_by_id]
+
     def query(
         self,
         message: str,
@@ -209,23 +227,10 @@ class RAGPipeline:
         # the system prompt).
         ordered_chunks = []
         if not meta_only:
-            self._ensure_loaded()
             # retrieval_query: follow-ups like "say that in Chinese" carry no
             # searchable meaning of their own — the caller passes a query
             # enriched with the previous question instead.
-            embed_response = self.client.embeddings.create(
-                model=EMBEDDING_MODEL, input=retrieval_query or message
-            )
-            query_vector = np.array([embed_response.data[0].embedding], dtype="float32")
-            faiss.normalize_L2(query_vector)
-
-            _, ids = self.index.search(query_vector, TOP_K)
-            hit_ids = [int(i) for i in ids[0] if i != -1]
-
-            session = SessionLocal()
-            chunks_by_id = {c.id: c for c in session.query(Chunk).filter(Chunk.id.in_(hit_ids)).all()}
-            session.close()
-            ordered_chunks = [chunks_by_id[i] for i in hit_ids if i in chunks_by_id]
+            ordered_chunks = self.retrieve(retrieval_query or message)
 
         context_text = "\n\n".join(f"[{c.title}]\n{c.content}" for c in ordered_chunks)
         if authority is not None:
