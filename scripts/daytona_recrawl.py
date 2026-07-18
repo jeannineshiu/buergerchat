@@ -11,10 +11,17 @@ latest index live only in the volume.
 Requires: DAYTONA_API_KEY and OPENAI_API_KEY in the environment
 (backend/.env is loaded for local runs).
 
-    python scripts/daytona_recrawl.py             # run the weekly crawl
+    python scripts/daytona_recrawl.py             # launch the crawl (fire-and-forget)
+    python scripts/daytona_recrawl.py --status    # crawl log tail + publish stamp
     python scripts/daytona_recrawl.py --download  # fetch /state/data -> data/
 
-After --download, ship it to Railway with scripts/upload-index.sh.
+The launch is fire-and-forget: the crawl runs under nohup inside the
+sandbox and this driver exits immediately — neither a dying driver
+process nor a closed laptop can interrupt it. The sandbox auto-stops
+5h after launch (crawl needs ~2h) and auto-deletes an hour later, so
+there is nothing to clean up. Completion signal: the published_at stamp
+reported by --status. After --download, ship the index to Railway with
+scripts/upload-index.sh.
 """
 
 import argparse
@@ -110,8 +117,11 @@ def recrawl(daytona: Daytona) -> None:
             domain_allow_list=DOMAIN_ALLOW_LIST,
             env_vars={"OPENAI_API_KEY": os.environ["OPENAI_API_KEY"]},
             volumes=[VolumeMount(volume_id=volume.id, mount_path=STATE)],
-            auto_stop_interval=30,
-            auto_delete_interval=60,  # safety net if this driver dies
+            # A detached nohup process does NOT count as activity, so this
+            # is effectively "run for up to 5h, then stop; delete an hour
+            # later" — the sandbox cleans itself up.
+            auto_stop_interval=300,
+            auto_delete_interval=60,
         )
     )
     print(f"sandbox: {sandbox.id}")
@@ -123,24 +133,52 @@ def recrawl(daytona: Daytona) -> None:
         # The volume is a FUSE/object-storage mount: appending to existing
         # files fails with EPERM, so the crawlers must never write to it
         # directly. Copy last week's state to local disk, crawl there, and
-        # sync whole files back. Crawl + build + publish is ONE exec: it
-        # keeps running inside the sandbox even if this driver dies, and
+        # sync whole files back. The whole chain runs detached under nohup:
+        # crawl log and publish stamp land in the volume at the end, and
         # only a consistent index+metadata pair is published, only after
         # the build fully succeeded.
-        print(run(
-            sandbox,
+        chain = (
             f"mkdir -p {STATE}/output {STATE}/data /work/crawler/output"
             f" && (cp {STATE}/output/*.jsonl /work/crawler/output/ 2>/dev/null || true)"
             " && cd /work && bash scripts/recrawl.sh"
             f" && cp /work/crawler/output/*.jsonl {STATE}/output/"
             f" && cp /work/data/faiss_index.bin /work/data/metadata.db {STATE}/data/"
-            f" && date -u +%FT%TZ > {STATE}/data/published_at",
-            timeout=CRAWL_TIMEOUT_S,
-        ))
-        print(run(sandbox, f"ls -la {STATE}/data"))
+            f" && date -u +%FT%TZ > {STATE}/data/published_at"
+        )
+        run(sandbox, f"nohup bash -c '{chain}; cp /tmp/crawl.log {STATE}/data/' > /tmp/crawl.log 2>&1 & echo detached pid $!")
+        print("crawl launched — check progress with --status")
+    except BaseException:
+        sandbox.delete()  # only on launch failure; on success it self-cleans
+        raise
+
+
+def status(daytona: Daytona) -> None:
+    """Publish stamp + live crawl log tail, read via the running sandbox
+    (or a throwaway one if the crawl sandbox is already gone)."""
+    sandboxes = [s for s in daytona.list() if str(s.state).endswith("STARTED")]
+    if sandboxes:
+        sandbox = sandboxes[0]
+        print(f"live sandbox: {sandbox.id}")
+        print(sandbox.process.exec("tail -5 /tmp/crawl.log 2>/dev/null || echo '(no log yet)'", timeout=60).result)
+        print(sandbox.process.exec(f"cat {STATE}/data/published_at 2>/dev/null || echo '(not published yet)'", timeout=60).result)
+        return
+    print("no live sandbox — checking the volume")
+    volume = get_ready_volume(daytona, create=False)
+    probe = daytona.create(
+        CreateSandboxFromImageParams(
+            image="python:3.11-slim",
+            volumes=[VolumeMount(volume_id=volume.id, mount_path=STATE)],
+            auto_delete_interval=30,
+        )
+    )
+    try:
+        print(probe.process.exec(
+            f"echo published_at: $(cat {STATE}/data/published_at 2>/dev/null || echo never)"
+            f" && ls -la {STATE}/data 2>/dev/null && tail -5 {STATE}/data/crawl.log 2>/dev/null",
+            timeout=60,
+        ).result)
     finally:
-        sandbox.delete()
-        print("sandbox deleted")
+        probe.delete()
 
 
 def download(daytona: Daytona) -> None:
@@ -166,6 +204,7 @@ def download(daytona: Daytona) -> None:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--download", action="store_true", help="fetch the latest built index from the volume into data/")
+    parser.add_argument("--status", action="store_true", help="show crawl progress + publish stamp")
     args = parser.parse_args()
 
     if "DAYTONA_API_KEY" not in os.environ:
@@ -173,6 +212,8 @@ def main():
     daytona = Daytona()
     if args.download:
         download(daytona)
+    elif args.status:
+        status(daytona)
     else:
         recrawl(daytona)
 
