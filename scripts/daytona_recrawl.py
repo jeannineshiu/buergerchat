@@ -1,7 +1,8 @@
 """Weekly re-crawl, executed inside a Daytona sandbox.
 
 Creates an ephemeral sandbox (python:3.11, 2 vCPU), mounts the persistent
-volume `buergerchat-crawl` at /state, clones the repo, symlinks
+volume `buergerchat-crawl` at /state, uploads the crawler sources as a
+tarball (no git auth needed — the repo is private), symlinks
 /state/output into crawler/output so the crawlers run incrementally
 against last week's state, runs scripts/recrawl.sh, and copies the built
 index into /state/data. The sandbox is deleted afterwards; state and the
@@ -17,8 +18,10 @@ After --download, ship it to Railway with scripts/upload-index.sh.
 """
 
 import argparse
+import io
 import os
 import sys
+import tarfile
 import time
 from pathlib import Path
 
@@ -33,8 +36,31 @@ from dotenv import load_dotenv
 REPO_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(REPO_ROOT / "backend" / ".env")
 
-GIT_URL = os.environ.get("GIT_URL", "https://github.com/jeannineshiu/buergerchat.git")
 VOLUME_NAME = "buergerchat-crawl"
+
+# Daytona Tier 1/2 sandboxes block general egress; a domain_allow_list
+# opens exactly what the crawl needs — and REPLACES the platform's default
+# essential-services list, so PyPI/Debian/OpenAI must be listed explicitly
+# (https://www.daytona.io/docs/en/network-limits/, max 20 entries).
+DOMAIN_ALLOW_LIST = ",".join([
+    # crawl targets
+    "www.arbeitsagentur.de",
+    "www.gesetze-im-internet.de",
+    "familienportal.de",
+    "www.familienportal.de",
+    "www.bzst.de",
+    "www.deutsche-rentenversicherung.de",
+    "www.bmwsb.bund.de",
+    "www.bamf.de",
+    "service.berlin.de",
+    "www.elster.de",
+    # package installs + embeddings
+    "pypi.org",
+    "files.pythonhosted.org",
+    "deb.debian.org",
+    "security.debian.org",
+    "api.openai.com",
+])
 STATE = "/state"
 
 # bzst.de's 30s robots crawl-delay dominates; a full first crawl takes ~2h.
@@ -54,6 +80,18 @@ def get_ready_volume(daytona: Daytona, create: bool):
     raise SystemExit(f"volume {VOLUME_NAME} not ready (state: {volume.state})")
 
 
+def sources_tarball() -> bytes:
+    """crawler/ sources + recrawl.sh, packed for upload. Only what the
+    sandbox needs — no secrets, no crawl output, no data artifacts."""
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as tar:
+        for path in sorted((REPO_ROOT / "crawler").glob("*.py")):
+            tar.add(path, arcname=f"crawler/{path.name}")
+        tar.add(REPO_ROOT / "crawler" / "requirements.txt", arcname="crawler/requirements.txt")
+        tar.add(REPO_ROOT / "scripts" / "recrawl.sh", arcname="scripts/recrawl.sh")
+    return buffer.getvalue()
+
+
 def run(sandbox, command: str, timeout: int = 600) -> str:
     print(f"$ {command}")
     response = sandbox.process.exec(command, timeout=timeout)
@@ -69,6 +107,7 @@ def recrawl(daytona: Daytona) -> None:
         CreateSandboxFromImageParams(
             image="python:3.11-slim",
             resources=Resources(cpu=2, memory=4, disk=8),
+            domain_allow_list=DOMAIN_ALLOW_LIST,
             env_vars={"OPENAI_API_KEY": os.environ["OPENAI_API_KEY"]},
             volumes=[VolumeMount(volume_id=volume.id, mount_path=STATE)],
             auto_stop_interval=30,
@@ -77,8 +116,9 @@ def recrawl(daytona: Daytona) -> None:
     )
     print(f"sandbox: {sandbox.id}")
     try:
-        run(sandbox, "apt-get update -qq && apt-get install -y -qq git sqlite3", timeout=900)
-        run(sandbox, f"git clone --depth 1 {GIT_URL} /work", timeout=600)
+        run(sandbox, "apt-get update -qq && apt-get install -y -qq sqlite3", timeout=900)
+        sandbox.fs.upload_file(sources_tarball(), "/tmp/sources.tar.gz")
+        run(sandbox, "mkdir -p /work && tar xzf /tmp/sources.tar.gz -C /work")
         # Crawl state lives in the volume: the crawlers append to
         # crawler/output/*.jsonl and skip already-crawled URLs, so pointing
         # the output dir at /state makes every weekly run incremental.
