@@ -124,10 +124,17 @@ def recrawl(daytona: Daytona) -> None:
         # the output dir at /state makes every weekly run incremental.
         run(sandbox, f"mkdir -p {STATE}/output {STATE}/data && rm -rf /work/crawler/output && ln -s {STATE}/output /work/crawler/output")
         run(sandbox, "pip install -q -r /work/crawler/requirements.txt", timeout=1200)
-        print(run(sandbox, "cd /work && bash scripts/recrawl.sh", timeout=CRAWL_TIMEOUT_S))
-        # FAISS index + metadata are written to /work/data; only publish a
-        # consistent pair into the volume once the build fully succeeded.
-        run(sandbox, f"cp /work/data/faiss_index.bin /work/data/metadata.db {STATE}/data/")
+        # Crawl, build and publish in ONE exec: the command keeps running
+        # inside the sandbox even if this driver dies, so a completed crawl
+        # always lands in the volume. Only a consistent index+metadata pair
+        # is published, and only after the build fully succeeded.
+        print(run(
+            sandbox,
+            "cd /work && bash scripts/recrawl.sh"
+            f" && cp /work/data/faiss_index.bin /work/data/metadata.db {STATE}/data/"
+            f" && date -u +%FT%TZ > {STATE}/data/published_at",
+            timeout=CRAWL_TIMEOUT_S,
+        ))
         print(run(sandbox, f"ls -la {STATE}/data"))
     finally:
         sandbox.delete()
