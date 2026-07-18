@@ -1,0 +1,33 @@
+# Weekly re-crawl trigger. The actual work — crawling all portals and
+# rebuilding the FAISS index — runs in a Daytona sandbox (see
+# scripts/daytona_recrawl.py); this workflow is only the cron that kicks
+# it off and streams its log. Crawl state and the built index persist in
+# the Daytona volume `buergerchat-crawl`.
+#
+# Repo secrets required: DAYTONA_API_KEY, OPENAI_API_KEY.
+name: weekly-crawl
+
+on:
+  schedule:
+    - cron: "0 3 * * 0" # Sundays 03:00 UTC
+  workflow_dispatch:
+
+jobs:
+  trigger-daytona:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Daytona SDK
+        run: pip install daytona python-dotenv
+
+      - name: Re-crawl in Daytona sandbox
+        env:
+          DAYTONA_API_KEY: ${{ secrets.DAYTONA_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: python scripts/daytona_recrawl.py

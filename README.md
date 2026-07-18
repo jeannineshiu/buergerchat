@@ -121,10 +121,16 @@ npm run dev                        # http://localhost:3000
 
 ## Roadmap
 
-- Land/city-level content (service.berlin.de, muenchen.de …)
-- Weekly re-crawl automation
+- Land/city-level content beyond Berlin (muenchen.de …)
+- Cross-lingual retrieval: translate queries to German before embedding (evals show zh recall@5 at 63% vs 84% for de)
 - Postgres for metadata/feedback (SQLite today; SQLAlchemy throughout, so it's a `DATABASE_URL` change)
 - Deeper tax coverage (income tax rules — ELSTER portal docs are already in)
+
+## Quality
+
+- **Golden-question evals** (`backend/evals/`): 19 questions with corpus-verified expected facts, in German, English and Chinese. `python evals/run_evals.py` measures retrieval recall@5 per language (embedding cost only); `--answers` adds full answer checks (facts, cited source, answer language). Run before/after every prompt, model, chunking or crawl change.
+- **Weekly re-crawl in Daytona sandboxes** (`scripts/daytona_recrawl.py`, triggered Sundays by `.github/workflows/weekly-crawl.yml`): an ephemeral [Daytona](https://www.daytona.io) sandbox crawls incrementally (state persists in a Daytona volume), rebuilds the index and stores it in the volume; `--download` pulls the latest index locally. Benefit amounts change every January — the eval baseline already caught the corpus drifting (Kindergeld 255 € in the 2025 crawl vs 259 € in 2026).
+- **Offline test suites**: backend, crawler and frontend tests run without network or API keys (OpenAI, FAISS and PVOG are stubbed).
 
 ## For contributors
 
