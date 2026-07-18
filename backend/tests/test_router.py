@@ -39,6 +39,15 @@ class TestWantsAuthority:
         assert router.wants_authority("Wie ist die Adresse der Elterngeldstelle?")
         assert router.wants_authority("What is the phone number of the office?")
 
+    def test_authority_names_trigger_in_any_language(self):
+        # The frontend's follow-up chips embed the German authority name so
+        # a click triggers the Behörden-Finder regardless of UI language.
+        assert router.wants_authority("我的 Elterngeldstelle（父母金辦公室）在哪裡？")
+        assert router.wants_authority("Where is a Rentenversicherung advice office near me?")
+        assert router.wants_authority("Wo ist mein zuständiges Finanzamt?")
+        assert router.wants_authority("Gdzie jest moja właściwa Wohngeldstelle (urząd dodatku mieszkaniowego)?")
+        assert router.wants_authority("Wo ist meine Agentur für Arbeit?")
+
     def test_no_intent_on_knowledge_question(self):
         assert not router.wants_authority("Was ist Bürgergeld?")
         assert not router.wants_authority("Wie hoch ist das Kindergeld?")

@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ChatMessage, type Message } from "@/components/ChatMessage";
+import { FollowUpChips } from "@/components/FollowUpChips";
 import { StarterPrompts } from "@/components/StarterPrompts";
+import { getFollowUps } from "@/lib/followups";
 import { LanguageSelect } from "@/components/LanguageSelect";
 import { SessionFeedback } from "@/components/SessionFeedback";
 import { sendChatMessage } from "@/lib/api";
@@ -56,6 +58,17 @@ export default function Home() {
 
   const answerCount = messages.filter((m) => m.role === "assistant").length;
   const showSessionFeedback = answerCount >= 3 && !isLoading && !sessionFeedbackDone;
+
+  // Follow-up suggestions for the newest answer only; questions the user
+  // already asked (typed or clicked) are filtered out.
+  const lastMessage = messages[messages.length - 1];
+  const askedBefore = new Set(
+    messages.filter((m) => m.role === "user").map((m) => m.content),
+  );
+  const followUps =
+    !isLoading && lastMessage?.role === "assistant" && lastMessage.topic
+      ? getFollowUps(language, lastMessage.topic).filter((q) => !askedBefore.has(q))
+      : [];
 
   useEffect(() => {
     const saved = localStorage.getItem("buergerchat-language");
@@ -180,6 +193,9 @@ export default function Home() {
               />
             ))}
             {isLoading && <TypingIndicator label={t.typing} />}
+            {followUps.length > 0 && (
+              <FollowUpChips questions={followUps} onSelect={handleSend} />
+            )}
             {showSessionFeedback && (
               <SessionFeedback
                 sessionId={sessionId}

@@ -52,6 +52,20 @@ AUTHORITY_KEYWORDS = [
     "an wen",
     "in meiner nähe",
     "in meiner naehe",
+    # Authority names double as intent triggers in ANY language: the
+    # frontend's follow-up suggestions embed the German name ("我的
+    # Elterngeldstelle 在哪裡？"), which is also how users naturally ask.
+    "elterngeldstelle",
+    "wohngeldstelle",
+    "wohngeldamt",
+    "agentur für arbeit",
+    "agentur fuer arbeit",
+    "arbeitsagentur",
+    "rentenversicherung",
+    "finanzamt",
+    "einbürgerungsbehörde",
+    "einbuergerungsbehoerde",
+    "beratungsstelle",
     # Asking for contact details or where to report IS asking for the
     # responsible authority ("gib mir die kontakt daten wie telefon nummer",
     # "wo soll ich mich melden?") — without these the PVOG lookup never
