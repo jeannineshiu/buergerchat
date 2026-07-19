@@ -116,6 +116,14 @@ class TestQueryTranslation:
         assert captured == ["Wie hoch ist das Kindergeld?"]
         assert pipeline.client.chat.completions.last_messages is None
 
+    def test_latin_non_german_language_is_translated(self, pipeline):
+        # Turkish/Polish/etc. queries are Latin-script but embed poorly
+        # against the German corpus — the request language triggers the
+        # translation even without a script signal.
+        captured = self._capture_embed_inputs(pipeline)
+        pipeline.retrieve("Kaç yaşında emekli olabilirim?", language="tr")
+        assert captured == ["STUB ANSWER"]
+
     def test_translation_failure_falls_back_to_original(self, pipeline):
         captured = self._capture_embed_inputs(pipeline)
 
@@ -179,7 +187,9 @@ class TestQuery:
         assert history_contents == [f"msg{i}" for i in range(4, 10)]  # last 6
 
     def test_third_language_leak_triggers_corrective_retry(self, pipeline):
-        answers = iter(["最多可ย้อนหลัง領 6 個月", "最多可追溯領 6 個月"])
+        # Call sequence for language=zh-Hant: query translation (Übersetze),
+        # first answer (leaks Thai), corrective retry.
+        answers = iter(["Kindergeld rückwirkend", "最多可ย้อนหลัง領 6 個月", "最多可追溯領 6 個月"])
         calls = []
 
         def fake_create(model, messages):
@@ -191,8 +201,9 @@ class TestQuery:
         pipeline.client.chat.completions.create = fake_create
         answer, _ = pipeline.query("Kindergeld rückwirkend", language="zh-Hant")
         assert answer == "最多可追溯領 6 個月"
-        assert len(calls) == 2
-        assert "mixes in another language" in calls[1][-1]["content"]
+        assert len(calls) == 3
+        assert "Übersetze" in calls[0][0]["content"]
+        assert "mixes in another language" in calls[2][-1]["content"]
 
     def test_clean_answer_needs_no_retry(self, pipeline):
         answer, _ = pipeline.query("Bürgergeld", language="zh-Hant")

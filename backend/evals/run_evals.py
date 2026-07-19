@@ -32,7 +32,26 @@ load_dotenv(BACKEND_DIR / ".env")
 
 GOLDEN_PATH = Path(__file__).resolve().parent / "golden.jsonl"
 
-CJK = re.compile(r"[一-鿿]")
+# Per-language script expectation: the answer must contain the language's
+# own script; Latin-script languages must not contain any of the others
+# (German terms stay Latin, so any Han/Hangul/Cyrillic/Arabic is a leak).
+SCRIPTS = {
+    "zh-Hant": re.compile(r"[一-鿿]"),
+    "zh-Hans": re.compile(r"[一-鿿]"),
+    "ko": re.compile(r"[가-힯]"),
+    "ru": re.compile(r"[Ѐ-ӿ]"),
+    "uk": re.compile(r"[Ѐ-ӿ]"),
+    "ar": re.compile(r"[؀-ۿ]"),
+    "fa": re.compile(r"[؀-ۿ]"),
+}
+NON_LATIN_ANY = re.compile(r"[一-鿿가-힯Ѐ-ӿ؀-ۿ぀-ヿ]")
+
+
+def answer_language_ok(answer: str, language: str) -> bool:
+    expected = SCRIPTS.get(language)
+    if expected:
+        return bool(expected.search(answer))
+    return not NON_LATIN_ANY.search(answer)
 
 
 def load_golden(limit: int | None) -> list[dict]:
@@ -52,10 +71,7 @@ def check_answer(answer: str, sources: list[dict], item: dict, language: str) ->
         domain in (s.get("url") or "") for s in sources for domain in item["sources"]
     )
     script_ok = not FORBIDDEN_SCRIPTS.search(answer)
-    # Coarse language sanity: Chinese answers must contain Han characters,
-    # German/English answers must not be dominated by them.
-    has_cjk = bool(CJK.search(answer))
-    language_ok = has_cjk if language.startswith("zh") else not has_cjk
+    language_ok = answer_language_ok(answer, language)
     return {
         "facts": facts_ok,
         "source": source_ok,
@@ -75,15 +91,22 @@ def print_summary(title: str, rows: dict[str, list[bool]]):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--languages", default="de,en,zh-Hant")
+    parser.add_argument(
+        "--languages",
+        default="de,en,zh-Hant",
+        help="comma list, or 'all' for every language in the golden set",
+    )
     parser.add_argument("--limit", type=int, default=None, help="first N golden items only")
     parser.add_argument("--answers", action="store_true", help="also run the full answer eval")
     args = parser.parse_args()
 
     from rag import RAGPipeline
 
-    languages = args.languages.split(",")
     items = load_golden(args.limit)
+    if args.languages == "all":
+        languages = list(items[0]["questions"])
+    else:
+        languages = args.languages.split(",")
     pipeline = RAGPipeline()
 
     retrieval_hits: dict[str, list[bool]] = {lang: [] for lang in languages}
@@ -93,7 +116,7 @@ def main():
             question = item["questions"].get(lang)
             if not question:
                 continue
-            chunks = pipeline.retrieve(question)
+            chunks = pipeline.retrieve(question, language=lang)
             hit = any(chunk_is_relevant(c, item) for c in chunks)
             retrieval_hits[lang].append(hit)
             if not hit:

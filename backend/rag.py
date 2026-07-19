@@ -117,11 +117,12 @@ LANGUAGE_NAMES = {
 }
 
 
-# The corpus is 100% German; text-embedding-3-small aligns Latin-script
-# queries with it well (evals: en 100%, de 89% recall@5) but non-Latin
-# scripts poorly (zh-Hant 68%). Queries containing CJK, Cyrillic, Arabic,
-# Hangul or Kana are therefore translated to German before embedding —
-# one cheap chat call, only for the scripts that need it.
+# The corpus is 100% German; text-embedding-3-small only aligns German
+# and English queries with it well (evals, recall@5: de 89%, en 100%,
+# but tr/pl/vi/id 68% and zh-Hant 68% pre-translation). Every query that
+# is (probably) neither German nor English is translated to German
+# before embedding — non-Latin scripts are detected from the text, the
+# Latin-script languages via the request's answer language.
 NON_LATIN_QUERY = re.compile(
     "[Ѐ-ӿ"   # Cyrillic
     "֐-׿"    # Hebrew
@@ -231,11 +232,11 @@ class RAGPipeline:
         except Exception:
             return query
 
-    def retrieve(self, query: str) -> list[Chunk]:
+    def retrieve(self, query: str, language: str = "de") -> list[Chunk]:
         """Embed the query and return the TOP_K nearest chunks in rank
         order — the exact retrieval path /chat uses (evals reuse it)."""
         self._ensure_loaded()
-        if NON_LATIN_QUERY.search(query):
+        if NON_LATIN_QUERY.search(query) or language not in ("de", "en"):
             query = self._query_to_german(query)
         embed_response = self.client.embeddings.create(
             model=EMBEDDING_MODEL, input=query
@@ -271,7 +272,7 @@ class RAGPipeline:
             # retrieval_query: follow-ups like "say that in Chinese" carry no
             # searchable meaning of their own — the caller passes a query
             # enriched with the previous question instead.
-            ordered_chunks = self.retrieve(retrieval_query or message)
+            ordered_chunks = self.retrieve(retrieval_query or message, language=language)
 
         context_text = "\n\n".join(f"[{c.title}]\n{c.content}" for c in ordered_chunks)
         if authority is not None:
