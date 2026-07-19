@@ -88,6 +88,46 @@ class TestLazyLoading:
         assert pipeline.index_loaded
 
 
+class TestQueryTranslation:
+    def _capture_embed_inputs(self, pipeline):
+        captured = []
+        original = pipeline.client.embeddings.create
+
+        def recording_create(model, input):  # noqa: A002 - OpenAI SDK signature
+            captured.append(input)
+            return original(model=model, input=input)
+
+        pipeline.client.embeddings.create = recording_create
+        return captured
+
+    def test_non_latin_query_is_translated_before_embedding(self, pipeline):
+        captured = self._capture_embed_inputs(pipeline)
+        pipeline.retrieve("Kindergeld 可以補領嗎？")
+        # The fake chat client answers "STUB ANSWER" — that translation,
+        # not the original Chinese, must be what gets embedded.
+        assert captured == ["STUB ANSWER"]
+        system = pipeline.client.chat.completions.last_messages[0]
+        assert "Übersetze" in system["content"]
+
+    def test_latin_query_embeds_directly_without_chat_call(self, pipeline):
+        captured = self._capture_embed_inputs(pipeline)
+        pipeline.client.chat.completions.last_messages = None
+        pipeline.retrieve("Wie hoch ist das Kindergeld?")
+        assert captured == ["Wie hoch ist das Kindergeld?"]
+        assert pipeline.client.chat.completions.last_messages is None
+
+    def test_translation_failure_falls_back_to_original(self, pipeline):
+        captured = self._capture_embed_inputs(pipeline)
+
+        def broken_create(model, messages):
+            raise RuntimeError("api down")
+
+        pipeline.client.chat.completions.create = broken_create
+        chunks = pipeline.retrieve("Kindergeld 可以補領嗎？")
+        assert captured == ["Kindergeld 可以補領嗎？"]
+        assert isinstance(chunks, list)
+
+
 class TestQuery:
     def test_retrieves_matching_chunk_as_source(self, pipeline):
         answer, sources = pipeline.query("Bürgergeld ist eine Leistung des Jobcenters.")

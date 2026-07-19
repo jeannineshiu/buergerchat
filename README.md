@@ -122,7 +122,6 @@ npm run dev                        # http://localhost:3000
 ## Roadmap
 
 - Land/city-level content beyond Berlin (muenchen.de …)
-- Cross-lingual retrieval: translate queries to German before embedding (evals show zh recall@5 at 63% vs 84% for de)
 - Postgres for metadata/feedback (SQLite today; SQLAlchemy throughout, so it's a `DATABASE_URL` change)
 - Deeper tax coverage (income tax rules — ELSTER portal docs are already in)
 

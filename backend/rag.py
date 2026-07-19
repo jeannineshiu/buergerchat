@@ -117,6 +117,28 @@ LANGUAGE_NAMES = {
 }
 
 
+# The corpus is 100% German; text-embedding-3-small aligns Latin-script
+# queries with it well (evals: en 100%, de 89% recall@5) but non-Latin
+# scripts poorly (zh-Hant 68%). Queries containing CJK, Cyrillic, Arabic,
+# Hangul or Kana are therefore translated to German before embedding —
+# one cheap chat call, only for the scripts that need it.
+NON_LATIN_QUERY = re.compile(
+    "[Ѐ-ӿ"   # Cyrillic
+    "֐-׿"    # Hebrew
+    "؀-ۿ"    # Arabic
+    "぀-ヿ"    # Kana
+    "一-鿿"    # CJK
+    "가-힯]"   # Hangul
+)
+
+TRANSLATE_PROMPT = (
+    "Übersetze die folgende Nutzerfrage zu deutschen Behörden und "
+    "Sozialleistungen ins Deutsche, für eine Dokumentensuche. Amtliche "
+    "deutsche Begriffe (Kindergeld, Jobcenter …) unverändert lassen. "
+    "Gib NUR die deutsche Übersetzung aus, nichts anderes."
+)
+
+
 def language_directive(language: str) -> str:
     name = LANGUAGE_NAMES.get(language, language)
     if language == "de":
@@ -192,10 +214,29 @@ class RAGPipeline:
         if not self.load():
             raise IndexNotReadyError(str(resolve_faiss_path()))
 
+    def _query_to_german(self, query: str) -> str:
+        """Translate a non-Latin-script query to German for retrieval.
+        Any failure falls back to the original query — retrieval quality
+        degrades, but /chat keeps working."""
+        try:
+            response = self.client.chat.completions.create(
+                model=CHAT_MODEL,
+                messages=[
+                    {"role": "system", "content": TRANSLATE_PROMPT},
+                    {"role": "user", "content": query},
+                ],
+            )
+            translated = (response.choices[0].message.content or "").strip()
+            return translated or query
+        except Exception:
+            return query
+
     def retrieve(self, query: str) -> list[Chunk]:
         """Embed the query and return the TOP_K nearest chunks in rank
         order — the exact retrieval path /chat uses (evals reuse it)."""
         self._ensure_loaded()
+        if NON_LATIN_QUERY.search(query):
+            query = self._query_to_german(query)
         embed_response = self.client.embeddings.create(
             model=EMBEDDING_MODEL, input=query
         )
