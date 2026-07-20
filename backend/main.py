@@ -1,4 +1,5 @@
 import os
+import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -34,7 +35,24 @@ def client_ip(request: Request) -> str:
 
 # Per-IP limits: /chat costs an LLM call per hit — without this it's a free,
 # anonymous, unmetered OpenAI proxy. Limits are generous for human use.
-limiter = Limiter(key_func=client_ip)
+#
+# slowapi's default storage is in-process memory: each replica counts hits
+# independently, so N replicas silently multiply every limit by N instead
+# of enforcing it — no error, just a quietly-wrong limit. Fine today (one
+# Railway replica per CLAUDE.md), but if replicas > 1 is ever turned on,
+# set RATELIMIT_STORAGE_URI (e.g. redis://…, needs the `redis` package —
+# already pinned in requirements.txt) so counts are shared.
+RATELIMIT_STORAGE_URI = os.environ.get("RATELIMIT_STORAGE_URI")
+if not RATELIMIT_STORAGE_URI and os.environ.get("FRONTEND_ORIGIN"):
+    # FRONTEND_ORIGIN is only set in the deployed environment (see CORS
+    # below) — this is the "looks like production" signal available here.
+    print(
+        "[startup] RATELIMIT_STORAGE_URI not set: rate limiting uses "
+        "in-process memory and only enforces correctly with exactly one "
+        "backend replica.",
+        file=sys.stderr,
+    )
+limiter = Limiter(key_func=client_ip, storage_uri=RATELIMIT_STORAGE_URI)
 
 app = FastAPI(
     title="buergerchat API",
