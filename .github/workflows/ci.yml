@@ -26,6 +26,23 @@ jobs:
       - name: Test
         run: python -m pytest backend/tests/ -q
 
+      - name: Audit dependencies (pip-audit)
+        # PYSEC-2026-1845 (pytest, dev-only, needs a pytest 9 major bump) and
+        # the starlette CVEs (transitive via the fastapi==0.111.0 pin, fix
+        # needs a fastapi major bump) are known and accepted for now — both
+        # require a breaking-change upgrade to clear. Everything else must
+        # stay clean.
+        run: >
+          pip-audit
+          --ignore-vuln PYSEC-2026-1845
+          --ignore-vuln PYSEC-2026-161
+          --ignore-vuln PYSEC-2026-248
+          --ignore-vuln PYSEC-2026-249
+          --ignore-vuln PYSEC-2026-1943
+          --ignore-vuln PYSEC-2026-1941
+          --ignore-vuln PYSEC-2026-2281
+          --ignore-vuln PYSEC-2026-2280
+
   crawler:
     runs-on: ubuntu-latest
     steps:
@@ -46,6 +63,11 @@ jobs:
       - name: Test
         working-directory: crawler
         run: python -m pytest tests/ -q
+
+      - name: Audit dependencies (pip-audit)
+        # PYSEC-2026-1845 (pytest, dev-only, needs a pytest 9 major bump) is
+        # known and accepted for now. Everything else must stay clean.
+        run: pip-audit --ignore-vuln PYSEC-2026-1845
 
   frontend:
     runs-on: ubuntu-latest

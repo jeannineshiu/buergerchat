@@ -11,5 +11,5 @@ openai==2.46.0
 httpx==0.28.1
 slowapi==0.1.9
 redis==5.0.8  # unused unless RATELIMIT_STORAGE_URI is set (see main.py) — lets slowapi share rate-limit counts across replicas
-langchain-text-splitters==0.2.2
-python-dotenv==1.0.1
+langchain-text-splitters==1.1.2
+python-dotenv==1.2.2
