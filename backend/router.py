@@ -135,6 +135,55 @@ META_PATTERNS = [
     "무엇을 할 수",
 ]
 
+# Pure small talk (greeting/thanks/goodbye) with no actual question — must
+# match the ENTIRE normalized message, not a substring, so a real question
+# that happens to start with "hi" ("hi, wo ist mein Jobcenter?") still goes
+# through retrieval. Deliberately short list: only unambiguous phrasings
+# that are never also the start of a real question.
+CHITCHAT_PATTERNS = {
+    # German
+    "hallo", "hi", "hey", "servus", "moin", "guten tag", "guten morgen",
+    "guten abend", "danke", "danke schön", "vielen dank", "dankeschön",
+    "tschüss", "tschüs", "auf wiedersehen", "bis bald", "ciao",
+    # English
+    "hello", "hi there", "hey there", "good morning", "good afternoon",
+    "good evening", "thanks", "thank you", "thanks a lot", "many thanks",
+    "bye", "goodbye", "see you", "see ya",
+    # Turkish
+    "merhaba", "selam", "günaydın", "iyi günler", "iyi akşamlar",
+    "teşekkürler", "teşekkür ederim", "çok teşekkürler", "hoşça kal",
+    "görüşürüz",
+    # Arabic
+    "مرحبا", "أهلا", "السلام عليكم", "صباح الخير", "مساء الخير", "شكرا",
+    "شكرا جزيلا", "مع السلامة", "إلى اللقاء",
+    # Persian
+    "سلام", "صبح بخیر", "عصر بخیر", "ممنون", "متشکرم", "خیلی ممنون",
+    "خداحافظ",
+    # Ukrainian
+    "привіт", "добрий день", "доброго ранку", "добрий вечір", "дякую",
+    "дуже дякую", "до побачення", "бувай",
+    # Russian
+    "привет", "добрый день", "доброе утро", "добрый вечер", "спасибо",
+    "большое спасибо", "до свидания", "пока",
+    # Polish
+    "cześć", "witam", "dzień dobry", "dobry wieczór", "dziękuję",
+    "dziękuję bardzo", "do widzenia", "pa",
+    # Traditional / Simplified Chinese
+    "你好", "哈囉", "早安", "午安", "晚安", "謝謝", "謝謝你", "非常感謝", "再見",
+    "早上好", "谢谢", "谢谢你", "非常感谢", "再见",
+    # Vietnamese
+    "xin chào", "chào bạn", "chào buổi sáng", "cảm ơn", "cảm ơn bạn",
+    "cảm ơn nhiều", "tạm biệt",
+    # Indonesian
+    "halo", "hai", "selamat pagi", "selamat siang", "selamat malam",
+    "terima kasih", "terima kasih banyak", "sampai jumpa",
+    # Korean
+    "안녕", "안녕하세요", "좋은 아침", "감사합니다", "고마워요", "정말 감사합니다",
+    "안녕히 가세요", "잘 가",
+}
+
+_CHITCHAT_STRIP = " \t\n!！?？.。,，~～"
+
 
 class QueryRouter:
     def classify(self, message: str) -> str:
@@ -155,3 +204,7 @@ class QueryRouter:
     def is_meta_question(self, message: str) -> bool:
         lowered = message.lower()
         return any(pattern in lowered for pattern in META_PATTERNS)
+
+    def is_chitchat(self, message: str) -> bool:
+        normalized = message.strip().lower().strip(_CHITCHAT_STRIP)
+        return normalized in CHITCHAT_PATTERNS

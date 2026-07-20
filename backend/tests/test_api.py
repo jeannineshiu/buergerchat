@@ -19,12 +19,12 @@ def client(monkeypatch):
 
     def fake_query(message, language="de", topic=None, authority=None,
                    ask_for_plz=False, authority_missing=False, history=None,
-                   meta_only=False, retrieval_query=None):
+                   meta_only=False, chitchat=False, retrieval_query=None):
         calls["query"] = {
             "message": message, "language": language, "topic": topic,
             "authority": authority, "ask_for_plz": ask_for_plz,
             "authority_missing": authority_missing, "meta_only": meta_only,
-            "retrieval_query": retrieval_query,
+            "chitchat": chitchat, "retrieval_query": retrieval_query,
         }
         sources = [{"title": "Doc", "url": "https://example.org"}]
         if authority is not None:
@@ -103,6 +103,16 @@ class TestChat:
         assert r.status_code == 200
         assert r.json()["sources"] == []
         assert client.calls["query"]["meta_only"] is True
+
+    def test_chitchat_skips_retrieval_and_has_no_sources(self, client):
+        r = client.post("/chat", json={"message": "Danke!"})
+        assert r.status_code == 200
+        assert r.json()["sources"] == []
+        assert client.calls["query"]["chitchat"] is True
+
+    def test_question_starting_with_greeting_is_not_chitchat(self, client):
+        client.post("/chat", json={"message": "Hi, wo ist mein Jobcenter?"})
+        assert client.calls["query"]["chitchat"] is False
 
     def test_index_not_ready_maps_to_503(self, client, monkeypatch):
         def raising_query(*args, **kwargs):

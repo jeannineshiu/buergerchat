@@ -81,3 +81,25 @@ class TestIsMetaQuestion:
     def test_regular_questions_are_not_meta(self):
         assert not router.is_meta_question("Was ist Bürgergeld?")
         assert not router.is_meta_question("Wo beantrage ich Kindergeld?")
+
+
+class TestIsChitchat:
+    def test_common_languages(self):
+        assert router.is_chitchat("Hallo")
+        assert router.is_chitchat("hi")
+        assert router.is_chitchat("Danke!")
+        assert router.is_chitchat("thank you")
+        assert router.is_chitchat("再見")
+        assert router.is_chitchat("감사합니다")
+
+    def test_case_and_punctuation_insensitive(self):
+        assert router.is_chitchat("  HALLO!!  ")
+        assert router.is_chitchat("Thanks.")
+
+    def test_real_question_starting_with_greeting_is_not_chitchat(self):
+        assert not router.is_chitchat("Hi, wo ist mein Jobcenter?")
+        assert not router.is_chitchat("Hallo, was ist Bürgergeld?")
+
+    def test_regular_questions_are_not_chitchat(self):
+        assert not router.is_chitchat("Was ist Bürgergeld?")
+        assert not router.is_chitchat("Wo beantrage ich Kindergeld?")

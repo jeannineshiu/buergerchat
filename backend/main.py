@@ -118,6 +118,18 @@ def chat(request: Request, chat_request: ChatRequest) -> ChatResponse:
     # user's history for whatever the new message doesn't contain.
     user_history = [m.content for m in chat_request.history if m.role == "user"]
 
+    if query_router.is_chitchat(chat_request.message):
+        # Pure small talk ("hi", "danke", "bye") — skip retrieval, same as
+        # meta-questions, so no LLM call burns an embedding + top-5 search
+        # (and no stray chunks leak into a source list that shouldn't exist).
+        answer, _ = rag_pipeline.query(
+            chat_request.message,
+            language=chat_request.language,
+            history=[m.model_dump() for m in chat_request.history],
+            chitchat=True,
+        )
+        return ChatResponse(answer=answer, sources=[], topic=DEFAULT_TOPIC)
+
     if query_router.is_meta_question(chat_request.message):
         answer, _ = rag_pipeline.query(
             chat_request.message,

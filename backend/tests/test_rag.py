@@ -179,6 +179,13 @@ class TestQuery:
         assert answer == "STUB ANSWER"
         assert sources == []
 
+    def test_chitchat_skips_retrieval_and_sources(self, pipeline):
+        answer, sources = pipeline.query("Hallo", chitchat=True)
+        assert answer == "STUB ANSWER"
+        assert sources == []
+        prompt = pipeline.client.chat.completions.last_messages[-1]["content"]
+        assert "Small Talk" in prompt
+
     def test_history_is_passed_and_truncated(self, pipeline):
         history = [{"role": "user", "content": f"msg{i}"} for i in range(10)]
         pipeline.query("Bürgergeld", history=history)

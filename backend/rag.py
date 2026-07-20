@@ -262,13 +262,14 @@ class RAGPipeline:
         authority_missing: bool = False,
         history: list[dict] | None = None,
         meta_only: bool = False,
+        chitchat: bool = False,
         retrieval_query: str | None = None,
     ):
-        # Capability meta-questions skip retrieval entirely: random chunks
-        # would leak into the answer and the source list (see META rule in
-        # the system prompt).
+        # Capability meta-questions and pure small talk both skip retrieval:
+        # random chunks would leak into the answer and the source list (see
+        # META rule in the system prompt, and the chitchat directive below).
         ordered_chunks = []
-        if not meta_only:
+        if not meta_only and not chitchat:
             # retrieval_query: follow-ups like "say that in Chinese" carry no
             # searchable meaning of their own — the caller passes a query
             # enriched with the previous question instead.
@@ -293,6 +294,14 @@ class RAGPipeline:
             "Double-check before finishing: every word is either the answer "
             "language or an official German term — no other language.",
         ]
+        if chitchat:
+            directives.append(
+                "Die Nachricht ist reiner Small Talk (Begrüßung, Dank oder "
+                "Verabschiedung) ohne inhaltliche Frage. Antworte NUR mit "
+                "einem kurzen, freundlichen Satz in der Antwortsprache — "
+                "ohne Bezug zum Kontext, ohne Rückfrage, ohne Aufzählung "
+                "von Themen."
+            )
         if ask_for_plz:
             directives.append(
                 "Die Person möchte wissen, welche Stelle zuständig ist, hat aber "
