@@ -5,8 +5,8 @@ pydantic-settings==2.3.4
 sqlalchemy==2.0.51
 psycopg2-binary==2.9.12
 alembic==1.18.5
-faiss-cpu==1.8.0
-numpy<2  # faiss-cpu 1.8.0 segfaults/ImportErrors under NumPy 2.x (see CLAUDE.md)
+faiss-cpu==1.14.3
+numpy==2.4.6
 openai==2.46.0
 httpx==0.28.1
 slowapi==0.1.9

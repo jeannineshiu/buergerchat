@@ -42,7 +42,7 @@ conda activate buergerchat        # Python 3.11
 pip install -r backend/requirements.txt -r crawler/requirements.txt
 ```
 
-`numpy<2` is required — `faiss-cpu==1.8.0` segfaults/ImportErrors under NumPy 2.x.
+backend and crawler pin the same `faiss-cpu`/`numpy` versions (currently 1.14.3 / 2.4.6) — they must move together since both land in this one shared env; a mismatch between the two files' pins makes `pip install -r backend/requirements.txt -r crawler/requirements.txt` fail with a dependency conflict (numpy<2 was required for the older faiss-cpu==1.8.0, which segfaulted/ImportErrored under NumPy 2.x; that's resolved as of faiss-cpu 1.14.3).
 
 ### Backend
 
