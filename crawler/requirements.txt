@@ -7,4 +7,4 @@ openai==2.46.0
 faiss-cpu==1.8.0
 langchain-text-splitters==1.1.2
 sqlalchemy==2.0.31
-numpy==1.26.4
+numpy==2.5.1
