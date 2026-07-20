@@ -79,7 +79,7 @@ Topic selection follows the documented demand of migration counseling services (
 ```
 
 - **Frontend**: Next.js (App Router, Tailwind), markdown-rendered answers, RTL support, per-message 👍/👎 and per-session star feedback
-- **Backend**: FastAPI + FAISS (cosine over `text-embedding-3-small`) + OpenAI chat model (`gpt-5.4-mini`, override via `CHAT_MODEL`)
+- **Backend**: FastAPI + FAISS (cosine over `text-embedding-3-small`) + OpenAI chat model (`gpt-5.3-chat-latest`, override via `CHAT_MODEL`)
 - **Authority finder**: live queries against the public PVOG Suchdienst API (PLZ → ARS → service → responsible organisation unit)
 - **Crawlers**: sitemap-driven (or restricted BFS), honor robots.txt including per-site crawl delays, re-runnable incrementally
 - **Deployment**: two Docker services on Railway; index artifacts live on a volume (`/data`), uploaded via `scripts/upload-index.sh`
@@ -127,11 +127,25 @@ npm run dev                        # http://localhost:3000
 - Postgres for metadata/feedback (SQLite today; SQLAlchemy throughout, so it's a `DATABASE_URL` change)
 - Deeper tax coverage (income tax rules — ELSTER portal docs are already in)
 
-## Quality
+## Quality & engineering practices
+
+**Correctness**
 
 - **Golden-question evals** (`backend/evals/`): 19 questions with corpus-verified expected facts, in German, English and Chinese. `python evals/run_evals.py` measures retrieval recall@5 per language (embedding cost only); `--answers` adds full answer checks (facts, cited source, answer language). Run before/after every prompt, model, chunking or crawl change.
+- **Offline test suites**: 77 backend + 24 crawler + 21 frontend tests run without network or API keys (OpenAI, FAISS and PVOG are stubbed).
+- **CI on every push/PR** (`.github/workflows/ci.yml`): lint (ruff / eslint) + tests + `npm run build` (doubles as a typecheck) for all three modules, independently. Nothing merges on faith — the checks are the same ones described above, just automatic.
 - **Weekly re-crawl in Daytona sandboxes** (`scripts/daytona_recrawl.py`, triggered Sundays by `.github/workflows/weekly-crawl.yml`): an ephemeral [Daytona](https://www.daytona.io) sandbox crawls incrementally (state persists in a Daytona volume), rebuilds the index and stores it in the volume; `--download` pulls the latest index locally. Benefit amounts change every January — the eval baseline already caught the corpus drifting (Kindergeld 255 € in the 2025 crawl vs 259 € in 2026).
-- **Offline test suites**: backend, crawler and frontend tests run without network or API keys (OpenAI, FAISS and PVOG are stubbed).
+
+**Cost & reliability**
+
+- **Chit-chat and meta-question short-circuits** (`backend/router.py`): pure small talk ("hi", "danke", "bye" — no actual question, matched in all 13 languages) and capability questions ("what can you do?") skip retrieval entirely instead of burning an embedding call + top-5 FAISS search on a message that was never going to use them.
+- **Ingestion-time deduplication** (`crawler/build_index.py`): syndicated pages (arbeitsagentur.de republishes the same article per Ort) produce byte-identical chunks; these are dropped by content hash before embedding, not just at display time.
+- **Rate limiting with a documented scaling gap**: per-IP limits via slowapi default to in-process memory, which is correct for today's single Railway replica but would silently multiply every limit if a second replica were added. An opt-in `RATELIMIT_STORAGE_URI` (Redis) makes shared counting a config change, not a code change — main.py warns at startup if it looks like production without it set.
+
+**Dependency hygiene**
+
+- **`pip-audit` gate in CI** for both Python modules, plus **Dependabot** (pip ×2, npm, github-actions) opening weekly update PRs — so known-CVE dependencies fail the build instead of going unnoticed, and version drift shows up as a reviewable PR instead of staying stale indefinitely.
+- Backend and crawler are independent modules (see [For contributors](#for-contributors)) but share **one local conda env** — cross-module pins that drift apart (e.g. two different `faiss-cpu` versions) break local dev even though each module's isolated CI job stays green, so shared-dependency bumps (faiss-cpu, numpy, pytest) are kept in lockstep across both `requirements.txt` files.
 
 ## For contributors
 
