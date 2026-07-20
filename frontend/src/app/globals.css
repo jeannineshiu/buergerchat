@@ -19,6 +19,15 @@
   }
 }
 
+html,
+body {
+  /* Firefox for Android maps any page-level rubber-band scroll to its
+     pull-to-refresh gesture, even when only the inner message list
+     overscrolls. The chat root never scrolls itself (h-dvh flex column
+     in page.tsx), so this only blocks the unwanted refresh trigger. */
+  overscroll-behavior-y: none;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);

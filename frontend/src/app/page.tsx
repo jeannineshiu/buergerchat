@@ -169,7 +169,7 @@ export default function Home() {
         </div>
       </header>
 
-      <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col overflow-y-auto px-4 py-6">
+      <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col overflow-y-auto overscroll-y-contain px-4 py-6">
         {messages.length === 0 ? (
           <div className="flex flex-1 flex-col justify-center gap-8 pb-16">
             <div className="text-center">
