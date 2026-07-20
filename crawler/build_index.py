@@ -10,6 +10,7 @@ crawler and backend are independent modules with separate dependency sets
 (see CLAUDE.md), so they agree on a schema rather than share code.
 """
 
+import hashlib
 import json
 import os
 import sys
@@ -118,6 +119,24 @@ def chunk_records(records: list[dict]) -> list[dict]:
     return chunks
 
 
+def dedupe_chunks(chunks: list[dict]) -> list[dict]:
+    """Drop chunks whose content is byte-identical to an earlier one —
+    e.g. arbeitsagentur.de syndicates the same article under multiple
+    per-Ort URLs, so the same paragraph would otherwise get embedded and
+    indexed once per syndicated copy. Keeps the first occurrence, so
+    output stays deterministic for the same input (see
+    test_chunking_is_deterministic)."""
+    seen: set[str] = set()
+    deduped = []
+    for chunk in chunks:
+        key = hashlib.sha256(chunk["content"].strip().encode("utf-8")).hexdigest()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(chunk)
+    return deduped
+
+
 def embed_texts(client: OpenAI, texts: list[str]) -> list[list[float]]:
     embeddings = []
     for i in range(0, len(texts), EMBED_BATCH_SIZE):
@@ -188,6 +207,10 @@ def main() -> None:
 
     chunks = chunk_records(records)
     print(f"{len(chunks)} chunks after splitting (chunk_size={CHUNK_SIZE}, overlap={CHUNK_OVERLAP})")
+
+    deduped = dedupe_chunks(chunks)
+    print(f"{len(deduped)} chunks after dedup ({len(chunks) - len(deduped)} duplicates dropped)")
+    chunks = deduped
 
     client = OpenAI(api_key=api_key)
     embeddings = embed_texts(client, [c["content"] for c in chunks])

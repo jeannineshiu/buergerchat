@@ -31,6 +31,31 @@ class TestChunkRecords:
         assert build_index.chunk_records(records) == build_index.chunk_records(records)
 
 
+class TestDedupeChunks:
+    def test_identical_content_keeps_first_occurrence(self):
+        chunks = [
+            {"url": "https://x.de/a", "content": "Gleicher Text."},
+            {"url": "https://x.de/b", "content": "Gleicher Text."},
+        ]
+        deduped = build_index.dedupe_chunks(chunks)
+        assert len(deduped) == 1
+        assert deduped[0]["url"] == "https://x.de/a"
+
+    def test_distinct_content_all_kept(self):
+        chunks = [
+            {"url": "https://x.de/a", "content": "Text A."},
+            {"url": "https://x.de/b", "content": "Text B."},
+        ]
+        assert build_index.dedupe_chunks(chunks) == chunks
+
+    def test_whitespace_only_difference_is_still_a_duplicate(self):
+        chunks = [
+            {"url": "https://x.de/a", "content": "Text.  "},
+            {"url": "https://x.de/b", "content": "Text."},
+        ]
+        assert len(build_index.dedupe_chunks(chunks)) == 1
+
+
 class TestLoadAndMerge:
     def test_missing_input_files_are_skipped(self, tmp_path, monkeypatch, capsys):
         existing = tmp_path / "a.jsonl"
