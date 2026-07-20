@@ -1,5 +1,7 @@
 # BürgerChat
 
+[![ci](https://github.com/jeannineshiu/buergerchat/actions/workflows/ci.yml/badge.svg)](https://github.com/jeannineshiu/buergerchat/actions/workflows/ci.yml)
+
 **German bureaucracy, explained in plain language — in 13 languages, always with official sources.**
 
 BürgerChat is an AI assistant that helps people in Germany understand their rights and navigate public services. It translates Amtsdeutsch (official German) into simple language (einfache Sprache, B1 level), tells you **who is eligible, what to do, and which authority is responsible** — and finds the office in charge for your postal code, anywhere in Germany.
