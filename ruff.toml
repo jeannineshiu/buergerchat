@@ -1,0 +1,9 @@
+# Applies to backend/ and crawler/ (independent Python modules, see CLAUDE.md).
+# Scoped to pyflakes + syntax errors only: real-bug rules that don't fight
+# this codebase's deliberate patterns (e.g. main.py's load_dotenv() before
+# other imports, so env vars are set before modules that read them at
+# import time).
+extend-exclude = ["frontend", "data", ".next"]
+
+[lint]
+select = ["E9", "F"]

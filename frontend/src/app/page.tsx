@@ -71,7 +71,11 @@ export default function Home() {
       : [];
 
   useEffect(() => {
+    // Reads localStorage (a client-only external system), so this can't
+    // move into a useState lazy initializer without a server/client
+    // hydration mismatch on the language-dependent text below.
     const saved = localStorage.getItem("buergerchat-language");
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (saved) setLanguage(saved);
   }, []);
 

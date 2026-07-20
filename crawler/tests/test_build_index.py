@@ -1,7 +1,5 @@
 import json
 
-import pytest
-
 import build_index
 
 

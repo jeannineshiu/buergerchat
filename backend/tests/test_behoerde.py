@@ -3,10 +3,7 @@ network). The stub models the quirks the real API showed: data hanging at
 city-level ARS while the PLZ resolves deeper, and federal descriptions
 that only name hotlines."""
 
-import json
-
 import httpx
-import pytest
 
 from behoerde import BehoerdeFinder, BehoerdeResult, strip_stopwords, _district_of, _is_federal
 
