@@ -18,7 +18,11 @@ jobs:
           cache-dependency-path: backend/requirements-dev.txt
 
       - name: Install dependencies
-        run: pip install -r backend/requirements-dev.txt
+        # setuptools ships with the venv, not from our requirements files —
+        # upgrade it explicitly so pip-audit doesn't flag a stale bundled copy.
+        run: |
+          pip install --upgrade pip setuptools
+          pip install -r backend/requirements-dev.txt
 
       - name: Lint (ruff)
         run: ruff check backend
@@ -55,7 +59,9 @@ jobs:
           cache-dependency-path: crawler/requirements-dev.txt
 
       - name: Install dependencies
-        run: pip install -r crawler/requirements-dev.txt
+        run: |
+          pip install --upgrade pip setuptools
+          pip install -r crawler/requirements-dev.txt
 
       - name: Lint (ruff)
         run: ruff check crawler
