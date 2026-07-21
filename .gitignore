@@ -32,3 +32,6 @@ crawler/output/
 
 # Logs
 *.log
+
+# Local notes/summaries (not project docs)
+notes/
