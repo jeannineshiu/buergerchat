@@ -9,7 +9,7 @@ faiss-cpu==1.14.3
 numpy==2.4.6
 openai==2.46.0
 httpx==0.28.1
-slowapi==0.1.9
+slowapi==0.1.10
 redis==8.0.1  # unused unless RATELIMIT_STORAGE_URI is set (see main.py) — lets slowapi share rate-limit counts across replicas
 langchain-text-splitters==1.1.2
 python-dotenv==1.2.2
