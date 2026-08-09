@@ -2,10 +2,13 @@
 
 Two modes:
   retrieval (default, embedding cost only, ~$0.001):
-      For every question × language: embed, search top-5, count a hit when
-      a retrieved chunk has the item's topic AND contains all its markers.
-      Reports recall@5 per language — the cross-lingual gap is the number
-      to watch (chunks are German, questions often aren't).
+      For every question × language: run pipeline.retrieve(), count a hit
+      when a retrieved chunk has the item's topic AND contains all its
+      markers. Reports recall@k per language, where k is however many
+      chunks retrieve() returns (TOP_K=5 plain; up to TOP_K+RERANK_EXTRA_K
+      with RERANK=1, so recall numbers are only comparable at equal k).
+      The cross-lingual gap is the number to watch (chunks are German,
+      questions often aren't).
   --answers (adds one chat completion per question × language):
       Full pipeline answers, checked for: expected facts present, an
       expected source domain cited, no forbidden-script leaks, and the
@@ -111,19 +114,22 @@ def main():
 
     retrieval_hits: dict[str, list[bool]] = {lang: [] for lang in languages}
     misses: list[str] = []
+    k_seen: set[int] = set()
     for item in items:
         for lang in languages:
             question = item["questions"].get(lang)
             if not question:
                 continue
             chunks = pipeline.retrieve(question, language=lang)
+            k_seen.add(len(chunks))
             hit = any(chunk_is_relevant(c, item) for c in chunks)
             retrieval_hits[lang].append(hit)
             if not hit:
                 misses.append(f"  MISS [{lang}] {item['id']}")
 
     print(f"Golden items: {len(items)} | languages: {', '.join(languages)}")
-    print_summary("Retrieval recall@5 (relevant chunk in top-5):", retrieval_hits)
+    k_label = str(max(k_seen)) if len(k_seen) == 1 else f"{min(k_seen)}-{max(k_seen)}"
+    print_summary(f"Retrieval recall@k, k={k_label} (relevant chunk retrieved):", retrieval_hits)
     if misses:
         print("\nRetrieval misses:")
         print("\n".join(misses))

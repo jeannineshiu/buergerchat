@@ -248,16 +248,17 @@ class TestHelpers:
 class TestRerank:
     """Vector similarity cannot separate the answer from same-topic noise on
     amount questions (the chunk stating the Regelsatz sat at rank 21 of 30),
-    so retrieve() searches wide and a model picks the final TOP_K."""
+    so retrieve() searches wide and appends model-picked extras after the
+    untouched vector top-K — augmenting, never evicting, a vector hit."""
 
     @pytest.fixture(autouse=True)
     def widen(self, pipeline, monkeypatch):
-        # The shared fixture pins TOP_K at 2; reranking only has room to
-        # reorder anything when the candidate window is wider than that.
-        # Depends on `pipeline` so this runs after it, not before.
-        monkeypatch.setattr(rag, "TOP_K", 5)
-        # Reranking ships disabled (it net-hurt recall@5) — these tests cover
-        # the code path behind the flag, so they have to switch it on.
+        # The shared fixture pins TOP_K at 2; with the 7-chunk fixture index,
+        # TOP_K=3 leaves 4 candidates outside the head for extras to come
+        # from. Depends on `pipeline` so this runs after it, not before.
+        monkeypatch.setattr(rag, "TOP_K", 3)
+        # Reranking ships disabled — these tests cover the code path behind
+        # the flag, so they have to switch it on.
         monkeypatch.setattr(rag, "RERANK", True)
 
     def _pick(self, pipeline, reply):
@@ -270,31 +271,44 @@ class TestRerank:
         pipeline.client.chat.completions.create = fake_create
         return [chunk.id for chunk in pipeline.retrieve("Wie hoch ist das Kindergeld?")]
 
-    def test_reranker_sees_more_candidates_than_it_returns(self, pipeline):
+    def test_reranker_sees_all_candidates(self, pipeline):
         seen = []
         original = pipeline._rerank
         pipeline._rerank = lambda query, candidates: (seen.append(len(candidates)), original(query, candidates))[1]
         chunks = pipeline.retrieve("Wie hoch ist das Kindergeld?")
         # The fixture index holds 7 chunks and CANDIDATE_K is far wider, so
-        # every chunk becomes a candidate while only TOP_K come back.
+        # every chunk becomes a candidate.
         assert seen == [7]
-        assert len(chunks) == rag.TOP_K
+        assert len(chunks) <= rag.TOP_K + rag.RERANK_EXTRA_K
 
-    def test_model_order_wins_over_vector_order(self, pipeline):
-        picked = self._pick(pipeline, "3,1")
-        vector_order = self._pick(pipeline, "")  # unparseable -> vector order
-        assert picked[:2] == [vector_order[2], vector_order[0]]
+    def test_vector_head_is_never_evicted(self, pipeline):
+        vector_order = self._pick(pipeline, "")  # unparseable -> no extras
+        picked = self._pick(pipeline, "7,6,5")
+        assert picked[: rag.TOP_K] == vector_order
 
-    def test_short_reply_is_padded_from_the_vector_order(self, pipeline):
-        picked = self._pick(pipeline, "2")
-        assert len(picked) == rag.TOP_K
-        assert len(set(picked)) == len(picked)  # no chunk repeated
+    def test_picks_outside_the_head_are_appended_in_model_order(self, pipeline):
+        vector_order = self._pick(pipeline, "")
+        # A single-number reply appends exactly that candidate — which is how
+        # these lookups learn the id behind a candidate number.
+        seventh = self._pick(pipeline, "7")[-1]
+        fifth = self._pick(pipeline, "5")[-1]
+        picked = self._pick(pipeline, "7,5")
+        assert picked == vector_order + [seventh, fifth]
+
+    def test_picks_already_in_the_head_add_nothing(self, pipeline):
+        vector_order = self._pick(pipeline, "")
+        assert self._pick(pipeline, "1,2,3") == vector_order
+
+    def test_extras_are_capped_at_rerank_extra_k(self, pipeline, monkeypatch):
+        monkeypatch.setattr(rag, "RERANK_EXTRA_K", 1)
+        picked = self._pick(pipeline, "7,6,5,4")
+        assert len(picked) == rag.TOP_K + 1
 
     def test_out_of_range_and_duplicate_numbers_are_ignored(self, pipeline):
-        picked = self._pick(pipeline, "999,2,2,0,-4")
         vector_order = self._pick(pipeline, "")
-        assert picked[0] == vector_order[1]
-        assert len(picked) == rag.TOP_K
+        seventh = self._pick(pipeline, "7")[-1]
+        picked = self._pick(pipeline, "999,7,7,0")
+        assert picked == vector_order + [seventh]
 
     def test_api_failure_falls_back_to_vector_order(self, pipeline):
         def boom(model, messages):

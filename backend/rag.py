@@ -39,17 +39,23 @@ TOP_K = 5
 # that window also carry a 5xx € figure while answering a different question,
 # which is why pure keyword fusion (FTS5+RRF) net-hurt recall and was reverted.
 CANDIDATE_K = int(os.environ.get("CANDIDATE_K", "30"))
-# DEFAULT OFF — it fixes the Regelsatz case (the 563-Euro chunk goes from
-# rank 21 to rank 1) but costs more than it wins on the golden set:
-# recall@5 de 95->89%, en 95->89%, zh-Hant 95->95% (2026-08-09, 19 items).
-# It repaired kindergeld-rueckwirkend and arbeitsuchend-frist while breaking
-# elterngeld-hoehe and rente-wartezeit, and spread steuerid-wo from zh-Hant
-# alone to all three languages. The model reliably promotes the chunk with
-# the requested figure, but it also drops definitional chunks that the eval
-# counts as relevant — reordering can only trade one hit for another as long
-# as exactly TOP_K chunks reach the answer. Set RERANK=1 to A/B it again.
+# DEFAULT OFF. The first iteration *replaced* the vector top-5 with the
+# reranker's picks; that fixed the Regelsatz case (the 563-Euro chunk went
+# from rank 21 to rank 1) but was zero-sum — with exactly TOP_K chunks
+# reaching the answer, promoting the chunk with the requested figure could
+# only evict a definitional chunk the eval counts as relevant (recall@5
+# de/en 95->89%, 2026-08-09). So reranking now *augments* instead: the
+# vector top-K is kept untouched and up to RERANK_EXTRA_K reranker picks
+# that aren't already in it are appended. Existing hits can no longer be
+# lost, at the cost of a longer answer context and one extra chat call per
+# query. Golden-set A/B 2026-08-09 (19 items): recall de 95->100%,
+# en 95->100%, zh-Hant 95->95% (k=5 -> k=5-8); it repaired
+# kindergeld-rueckwirkend [en] and arbeitsuchend-frist [de], broke nothing,
+# and left only steuerid-wo [zh-Hant] missing. Set RERANK=1 to enable.
 RERANK = os.environ.get("RERANK", "0").lower() not in ("0", "false", "no")
 RERANK_MODEL = os.environ.get("RERANK_MODEL", CHAT_MODEL)
+# How many reranker picks may join the vector top-K in the answer context.
+RERANK_EXTRA_K = int(os.environ.get("RERANK_EXTRA_K", "3"))
 # Enough of a chunk to judge relevance without paying for all 30 in full.
 RERANK_SNIPPET_CHARS = 600
 
@@ -268,11 +274,12 @@ class RAGPipeline:
             return query
 
     def _rerank(self, query: str, candidates: list[Chunk]) -> list[Chunk]:
-        """Reorder candidates by asking a model which ones answer the query.
+        """Ask a model which candidates answer the query; return its picks
+        in model order.
 
         Any failure — API error, unparseable reply, indices out of range —
-        falls back to the vector order, so retrieval degrades to what it was
-        before reranking instead of breaking /chat.
+        returns [], so retrieval degrades to the plain vector top-K instead
+        of breaking /chat.
         """
         listing = "\n\n".join(
             f"[{n}] {chunk.title}\n{chunk.content[:RERANK_SNIPPET_CHARS]}"
@@ -288,7 +295,7 @@ class RAGPipeline:
             )
             reply = response.choices[0].message.content or ""
         except Exception:
-            return candidates[:TOP_K]
+            return []
 
         picked: list[Chunk] = []
         seen: set[int] = set()
@@ -297,18 +304,14 @@ class RAGPipeline:
             if 0 <= index < len(candidates) and index not in seen:
                 seen.add(index)
                 picked.append(candidates[index])
-        if not picked:
-            return candidates[:TOP_K]
-        # A model that returns too few keeps the best vector hits as filler,
-        # so the caller always gets a full TOP_K when the corpus can supply it.
-        picked += [c for n, c in enumerate(candidates) if n not in seen]
-        return picked[:TOP_K]
+        return picked
 
     def retrieve(self, query: str, language: str = "de") -> list[Chunk]:
-        """Embed the query and return the TOP_K best chunks in rank order —
-        the exact retrieval path /chat uses (evals reuse it). With RERANK on,
-        the vector search casts a wider net (CANDIDATE_K) and a model picks
-        the final TOP_K from it."""
+        """Embed the query and return the best chunks in rank order — the
+        exact retrieval path /chat uses (evals reuse it). Plain vector
+        top-K by default; with RERANK on, the vector search casts a wider
+        net (CANDIDATE_K) and up to RERANK_EXTRA_K model-picked chunks are
+        appended after the untouched vector top-K."""
         self._ensure_loaded()
         if NON_LATIN_QUERY.search(query) or language not in ("de", "en"):
             query = self._query_to_german(query)
@@ -327,9 +330,12 @@ class RAGPipeline:
         session.close()
         candidates = [chunks_by_id[i] for i in hit_ids if i in chunks_by_id]
 
+        head = candidates[:TOP_K]
         if not RERANK or len(candidates) <= TOP_K:
-            return candidates[:TOP_K]
-        return self._rerank(query, candidates)
+            return head
+        head_ids = {c.id for c in head}
+        extras = [c for c in self._rerank(query, candidates) if c.id not in head_ids]
+        return head + extras[:RERANK_EXTRA_K]
 
     def query(
         self,
