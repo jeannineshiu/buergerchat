@@ -50,9 +50,13 @@ class FakeEmbeddings:
 class FakeChatCompletions:
     def __init__(self):
         self.last_messages = None
+        # retrieve() can make two chat calls now (translation, rerank) before
+        # the answer call, so tests need the whole sequence, not just the last.
+        self.calls = []
 
     def create(self, model, messages):
         self.last_messages = messages
+        self.calls.append(messages)
         message = type("Msg", (), {"content": "STUB ANSWER"})()
         choice = type("Choice", (), {"message": message})()
         return type("Completion", (), {"choices": [choice]})()

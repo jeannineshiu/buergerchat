@@ -30,6 +30,41 @@ EMBEDDING_MODEL = "text-embedding-3-small"
 CHAT_MODEL = os.environ.get("CHAT_MODEL", "gpt-5.3-chat-latest")
 TOP_K = 5
 
+# Vector similarity alone cannot separate the answer from the noise on
+# amount questions: for "Wie hoch ist der Regelsatz beim Bürgergeld für
+# Alleinstehende?" the 30 nearest chunks span cosine 0.639..0.578, the top 5
+# are Elterngeld/Kinderzuschlag pages, and the chunk that actually states
+# "Regelbedarf (alleinstehende Person) 563,00 Euro" sits at rank 21. So embed
+# wide, then let a model read the candidates and pick. Three other chunks in
+# that window also carry a 5xx € figure while answering a different question,
+# which is why pure keyword fusion (FTS5+RRF) net-hurt recall and was reverted.
+CANDIDATE_K = int(os.environ.get("CANDIDATE_K", "30"))
+# DEFAULT OFF — it fixes the Regelsatz case (the 563-Euro chunk goes from
+# rank 21 to rank 1) but costs more than it wins on the golden set:
+# recall@5 de 95->89%, en 95->89%, zh-Hant 95->95% (2026-08-09, 19 items).
+# It repaired kindergeld-rueckwirkend and arbeitsuchend-frist while breaking
+# elterngeld-hoehe and rente-wartezeit, and spread steuerid-wo from zh-Hant
+# alone to all three languages. The model reliably promotes the chunk with
+# the requested figure, but it also drops definitional chunks that the eval
+# counts as relevant — reordering can only trade one hit for another as long
+# as exactly TOP_K chunks reach the answer. Set RERANK=1 to A/B it again.
+RERANK = os.environ.get("RERANK", "0").lower() not in ("0", "false", "no")
+RERANK_MODEL = os.environ.get("RERANK_MODEL", CHAT_MODEL)
+# Enough of a chunk to judge relevance without paying for all 30 in full.
+RERANK_SNIPPET_CHARS = 600
+
+RERANK_PROMPT = """\
+Du bewertest Textausschnitte aus offiziellen deutschen Behörden- und \
+Gesetzestexten danach, ob sie eine konkrete Nutzerfrage beantworten.
+
+Wähle die {top_k} Ausschnitte, die die Frage am direktesten beantworten. \
+Ein Ausschnitt, der die gefragte Zahl, Frist oder Bedingung ausdrücklich \
+nennt, ist besser als einer, der nur dasselbe Thema streift. Ausschnitte \
+mit einer Zahl zu einer ANDEREN Leistung sind nicht relevant.
+
+Antworte ausschließlich mit den Nummern, absteigend nach Nützlichkeit, \
+durch Komma getrennt. Keine Erklärung. Beispiel: 7,2,15,1,9"""
+
 # Product positioning (see CLAUDE.md): translate Amtsdeutsch into plain
 # language with actionable steps. The context is always German; the answer
 # is written in the user's language.
@@ -232,9 +267,48 @@ class RAGPipeline:
         except Exception:
             return query
 
+    def _rerank(self, query: str, candidates: list[Chunk]) -> list[Chunk]:
+        """Reorder candidates by asking a model which ones answer the query.
+
+        Any failure — API error, unparseable reply, indices out of range —
+        falls back to the vector order, so retrieval degrades to what it was
+        before reranking instead of breaking /chat.
+        """
+        listing = "\n\n".join(
+            f"[{n}] {chunk.title}\n{chunk.content[:RERANK_SNIPPET_CHARS]}"
+            for n, chunk in enumerate(candidates, 1)
+        )
+        try:
+            response = self.client.chat.completions.create(
+                model=RERANK_MODEL,
+                messages=[
+                    {"role": "system", "content": RERANK_PROMPT.format(top_k=TOP_K)},
+                    {"role": "user", "content": f"Frage: {query}\n\nAusschnitte:\n{listing}"},
+                ],
+            )
+            reply = response.choices[0].message.content or ""
+        except Exception:
+            return candidates[:TOP_K]
+
+        picked: list[Chunk] = []
+        seen: set[int] = set()
+        for number in re.findall(r"\d+", reply):
+            index = int(number) - 1
+            if 0 <= index < len(candidates) and index not in seen:
+                seen.add(index)
+                picked.append(candidates[index])
+        if not picked:
+            return candidates[:TOP_K]
+        # A model that returns too few keeps the best vector hits as filler,
+        # so the caller always gets a full TOP_K when the corpus can supply it.
+        picked += [c for n, c in enumerate(candidates) if n not in seen]
+        return picked[:TOP_K]
+
     def retrieve(self, query: str, language: str = "de") -> list[Chunk]:
-        """Embed the query and return the TOP_K nearest chunks in rank
-        order — the exact retrieval path /chat uses (evals reuse it)."""
+        """Embed the query and return the TOP_K best chunks in rank order —
+        the exact retrieval path /chat uses (evals reuse it). With RERANK on,
+        the vector search casts a wider net (CANDIDATE_K) and a model picks
+        the final TOP_K from it."""
         self._ensure_loaded()
         if NON_LATIN_QUERY.search(query) or language not in ("de", "en"):
             query = self._query_to_german(query)
@@ -244,13 +318,18 @@ class RAGPipeline:
         query_vector = np.array([embed_response.data[0].embedding], dtype="float32")
         faiss.normalize_L2(query_vector)
 
-        _, ids = self.index.search(query_vector, TOP_K)
+        search_k = max(CANDIDATE_K, TOP_K) if RERANK else TOP_K
+        _, ids = self.index.search(query_vector, search_k)
         hit_ids = [int(i) for i in ids[0] if i != -1]
 
         session = SessionLocal()
         chunks_by_id = {c.id: c for c in session.query(Chunk).filter(Chunk.id.in_(hit_ids)).all()}
         session.close()
-        return [chunks_by_id[i] for i in hit_ids if i in chunks_by_id]
+        candidates = [chunks_by_id[i] for i in hit_ids if i in chunks_by_id]
+
+        if not RERANK or len(candidates) <= TOP_K:
+            return candidates[:TOP_K]
+        return self._rerank(query, candidates)
 
     def query(
         self,

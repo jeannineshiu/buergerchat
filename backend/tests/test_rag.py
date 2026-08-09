@@ -106,15 +106,16 @@ class TestQueryTranslation:
         # The fake chat client answers "STUB ANSWER" — that translation,
         # not the original Chinese, must be what gets embedded.
         assert captured == ["STUB ANSWER"]
-        system = pipeline.client.chat.completions.last_messages[0]
+        # The translation is the first chat call; the rerank follows it.
+        system = pipeline.client.chat.completions.calls[0][0]
         assert "Übersetze" in system["content"]
 
-    def test_latin_query_embeds_directly_without_chat_call(self, pipeline):
+    def test_latin_query_embeds_directly_without_translation_call(self, pipeline):
         captured = self._capture_embed_inputs(pipeline)
-        pipeline.client.chat.completions.last_messages = None
         pipeline.retrieve("Wie hoch ist das Kindergeld?")
         assert captured == ["Wie hoch ist das Kindergeld?"]
-        assert pipeline.client.chat.completions.last_messages is None
+        prompts = [call[0]["content"] for call in pipeline.client.chat.completions.calls]
+        assert not any("Übersetze" in prompt for prompt in prompts)
 
     def test_latin_non_german_language_is_translated(self, pipeline):
         # Turkish/Polish/etc. queries are Latin-script but embed poorly
@@ -194,8 +195,8 @@ class TestQuery:
         assert history_contents == [f"msg{i}" for i in range(4, 10)]  # last 6
 
     def test_third_language_leak_triggers_corrective_retry(self, pipeline):
-        # Call sequence for language=zh-Hant: query translation (Übersetze),
-        # first answer (leaks Thai), corrective retry.
+        # Call sequence for language=zh-Hant (reranking is off by default):
+        # query translation (Übersetze), first answer (leaks Thai), retry.
         answers = iter(["Kindergeld rückwirkend", "最多可ย้อนหลัง領 6 個月", "最多可追溯領 6 個月"])
         calls = []
 
@@ -242,3 +243,70 @@ class TestHelpers:
         custom = tmp_path / "custom.bin"
         monkeypatch.setenv("FAISS_INDEX_PATH", str(custom))
         assert resolve_faiss_path() == custom.resolve()
+
+
+class TestRerank:
+    """Vector similarity cannot separate the answer from same-topic noise on
+    amount questions (the chunk stating the Regelsatz sat at rank 21 of 30),
+    so retrieve() searches wide and a model picks the final TOP_K."""
+
+    @pytest.fixture(autouse=True)
+    def widen(self, pipeline, monkeypatch):
+        # The shared fixture pins TOP_K at 2; reranking only has room to
+        # reorder anything when the candidate window is wider than that.
+        # Depends on `pipeline` so this runs after it, not before.
+        monkeypatch.setattr(rag, "TOP_K", 5)
+        # Reranking ships disabled (it net-hurt recall@5) — these tests cover
+        # the code path behind the flag, so they have to switch it on.
+        monkeypatch.setattr(rag, "RERANK", True)
+
+    def _pick(self, pipeline, reply):
+        """Force the reranker's answer and return the retrieved chunk ids."""
+
+        def fake_create(model, messages):
+            message = type("Msg", (), {"content": reply})()
+            return type("Completion", (), {"choices": [type("Choice", (), {"message": message})()]})()
+
+        pipeline.client.chat.completions.create = fake_create
+        return [chunk.id for chunk in pipeline.retrieve("Wie hoch ist das Kindergeld?")]
+
+    def test_reranker_sees_more_candidates_than_it_returns(self, pipeline):
+        seen = []
+        original = pipeline._rerank
+        pipeline._rerank = lambda query, candidates: (seen.append(len(candidates)), original(query, candidates))[1]
+        chunks = pipeline.retrieve("Wie hoch ist das Kindergeld?")
+        # The fixture index holds 7 chunks and CANDIDATE_K is far wider, so
+        # every chunk becomes a candidate while only TOP_K come back.
+        assert seen == [7]
+        assert len(chunks) == rag.TOP_K
+
+    def test_model_order_wins_over_vector_order(self, pipeline):
+        picked = self._pick(pipeline, "3,1")
+        vector_order = self._pick(pipeline, "")  # unparseable -> vector order
+        assert picked[:2] == [vector_order[2], vector_order[0]]
+
+    def test_short_reply_is_padded_from_the_vector_order(self, pipeline):
+        picked = self._pick(pipeline, "2")
+        assert len(picked) == rag.TOP_K
+        assert len(set(picked)) == len(picked)  # no chunk repeated
+
+    def test_out_of_range_and_duplicate_numbers_are_ignored(self, pipeline):
+        picked = self._pick(pipeline, "999,2,2,0,-4")
+        vector_order = self._pick(pipeline, "")
+        assert picked[0] == vector_order[1]
+        assert len(picked) == rag.TOP_K
+
+    def test_api_failure_falls_back_to_vector_order(self, pipeline):
+        def boom(model, messages):
+            raise RuntimeError("rerank is down")
+
+        vector_order = self._pick(pipeline, "")
+        pipeline.client.chat.completions.create = boom
+        assert [c.id for c in pipeline.retrieve("Wie hoch ist das Kindergeld?")] == vector_order
+
+    def test_disabling_rerank_skips_the_extra_call(self, pipeline, monkeypatch):
+        monkeypatch.setattr(rag, "RERANK", False)
+        pipeline.client.chat.completions.calls.clear()
+        chunks = pipeline.retrieve("Wie hoch ist das Kindergeld?")
+        assert len(chunks) <= rag.TOP_K
+        assert pipeline.client.chat.completions.calls == []
