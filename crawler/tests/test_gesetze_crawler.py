@@ -1,5 +1,6 @@
 from bs4 import BeautifulSoup
 
+import gesetze_crawler
 from gesetze_crawler import clean_cell, extract_sections, render_table, title_unit
 
 
@@ -112,6 +113,19 @@ class TestExtractSections:
 
     def test_paragraph_content_is_untouched(self):
         assert self.sections()[0]["content"] == "Die Höhe der Regelbedarfe wird neu ermittelt."
+
+    def test_allowlisted_law_keeps_only_the_named_anlagen(self, monkeypatch):
+        # SGB VI's other 18 Anlagen are pre-2002 conversion tables — dense
+        # historical figures that answer nothing a citizen asks.
+        html = LAW_HTML.replace('<span class="jnenbez">Anlage</span>',
+                                '<span class="jnenbez">Anlage 9</span>')
+        monkeypatch.setitem(gesetze_crawler.ANLAGE_ALLOWLIST, "SGB VI", {"Anlage 1"})
+        titles = [r["title"] for r in extract_sections(html, "SGB VI", "https://example.de/x.html", "rente")]
+        assert titles == ["SGB VI § 28 Ermittlung der Regelbedarfe"]
+
+    def test_laws_without_an_allowlist_keep_every_anlage(self):
+        assert "SGB XII" not in gesetze_crawler.ANLAGE_ALLOWLIST
+        assert len(self.sections()) == 2
 
     def test_records_carry_anchor_topic_and_law(self):
         anlage = self.sections()[1]

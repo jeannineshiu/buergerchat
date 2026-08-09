@@ -61,6 +61,18 @@ def fetch_law_html(client: httpx.Client, base_url: str, filename: str) -> str:
     return response.text
 
 
+# SGB VI carries 21 Anlagen; all but these three are conversion tables for
+# pre-2002 contribution records — Lohn-/Beitrags-/Gehaltsklassen, DM/RM/Franken
+# factors, Qualifikationsgruppen, saarländische und Berliner Beiträge. They
+# answer nothing a citizen asks and would add ~80 chunks of dense historical
+# figures. The three kept ones carry figures still in use: Durchschnittsentgelt
+# and the Beitragsbemessungsgrenzen (Anlage 2 runs through 2026).
+# Laws absent from this map keep all their Anlagen (SGB XII's Regelbedarfsstufen
+# table is the whole point of crawling Anlagen at all).
+ANLAGE_ALLOWLIST = {
+    "SGB VI": {"Anlage 1", "Anlage 2", "Anlage 2a"},
+}
+
 # Empty-cell markers used in the Anlage tables ("no amount for this period").
 EMPTY_CELLS = {"", "-", "–", "—"}
 # Words that follow a German Ergänzungsstrich ("Vater- und Mutterschaft"),
@@ -146,6 +158,9 @@ def extract_sections(html: str, law_code: str, page_url: str, topic: str) -> lis
         is_anlage = enbez.startswith("Anlage")
         if not enbez.startswith("§") and not is_anlage:
             continue  # skips Inhaltsübersicht/Rahmen, keeps sections and Anlagen
+        allowed = ANLAGE_ALLOWLIST.get(law_code)
+        if is_anlage and allowed is not None and enbez not in allowed:
+            continue
 
         entitel_tag = norm.find("span", class_="jnentitel")
         entitel = entitel_tag.get_text(strip=True) if entitel_tag else ""
