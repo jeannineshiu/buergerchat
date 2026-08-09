@@ -17,11 +17,12 @@ Requires: DAYTONA_API_KEY and OPENAI_API_KEY in the environment
 
 The launch is fire-and-forget: the crawl runs under nohup inside the
 sandbox and this driver exits immediately — neither a dying driver
-process nor a closed laptop can interrupt it. The sandbox auto-stops
-5h after launch (crawl needs ~2h) and auto-deletes an hour later, so
-there is nothing to clean up. Completion signal: the published_at stamp
-reported by --status. After --download, ship the index to Railway with
-scripts/upload-index.sh.
+process nor a closed laptop can interrupt it. On success the chain
+stops the sandbox itself (see the self-stop note below); auto_stop is
+only the fallback for a crawl that fails or hangs. Either way it
+auto-deletes an hour after stopping, so there is nothing to clean up.
+Completion signal: the published_at stamp reported by --status. After
+--download, ship the index to Railway with scripts/upload-index.sh.
 """
 
 import argparse
@@ -67,8 +68,11 @@ DOMAIN_ALLOW_LIST = ",".join([
     "deb.debian.org",
     "security.debian.org",
     "api.openai.com",
+    # the sandbox stops itself here when the crawl succeeds
+    "app.daytona.io",
 ])
 STATE = "/state"
+DAYTONA_API_URL = "https://app.daytona.io/api"
 
 # bzst.de's 30s robots crawl-delay dominates; a full first crawl takes ~2h.
 CRAWL_TIMEOUT_S = 4 * 3600
@@ -115,18 +119,30 @@ def recrawl(daytona: Daytona) -> None:
             image="python:3.11-slim",
             resources=Resources(cpu=2, memory=4, disk=8),
             domain_allow_list=DOMAIN_ALLOW_LIST,
-            env_vars={"OPENAI_API_KEY": os.environ["OPENAI_API_KEY"]},
+            # The Daytona key is in here only so the crawl can stop its own
+            # sandbox when it finishes. It is a full-account key (it can
+            # create and delete every sandbox), so it rides along with the
+            # crawl's blast radius — acceptable because nothing crawled is
+            # ever executed, but do not widen its use inside the sandbox.
+            env_vars={
+                "OPENAI_API_KEY": os.environ["OPENAI_API_KEY"],
+                "DAYTONA_API_KEY": os.environ["DAYTONA_API_KEY"],
+            },
             volumes=[VolumeMount(volume_id=volume.id, mount_path=STATE)],
             # A detached nohup process does NOT count as activity, so this
-            # is effectively "run for up to 5h, then stop; delete an hour
-            # later" — the sandbox cleans itself up.
+            # is a fixed "stop 5h after launch" deadline rather than an idle
+            # timer — it cannot be set near the crawl's real runtime without
+            # killing the crawl mid-run. It is the fallback for a failed or
+            # hung crawl; the success path stops the sandbox itself, which is
+            # what keeps the idle-but-billing window down to seconds.
             auto_stop_interval=300,
             auto_delete_interval=60,
         )
     )
     print(f"sandbox: {sandbox.id}")
     try:
-        run(sandbox, "apt-get update -qq && apt-get install -y -qq sqlite3", timeout=900)
+        # curl is not in python:3.11-slim and the chain's self-stop needs it.
+        run(sandbox, "apt-get update -qq && apt-get install -y -qq sqlite3 curl", timeout=900)
         sandbox.fs.upload_file(sources_tarball(), "/tmp/sources.tar.gz")
         run(sandbox, "mkdir -p /work && tar xzf /tmp/sources.tar.gz -C /work")
         run(sandbox, "pip install -q -r /work/crawler/requirements.txt", timeout=1200)
@@ -145,7 +161,22 @@ def recrawl(daytona: Daytona) -> None:
             f" && cp /work/data/faiss_index.bin /work/data/metadata.db {STATE}/data/"
             f" && date -u +%FT%TZ > {STATE}/data/published_at"
         )
-        run(sandbox, f"nohup bash -c '{chain}; cp /tmp/crawl.log {STATE}/data/' > /tmp/crawl.log 2>&1 & echo detached pid $!")
+        # Stop the sandbox as soon as the work is published, instead of
+        # idling until the 5h deadline (~4h of billed nothing last run).
+        # Ordering matters: the stop must come after the crawl log lands in
+        # the volume, or stopping races the copy — hence the ok flag rather
+        # than chaining the curl onto `chain` directly. On failure ok is
+        # unset and the sandbox stays up for debugging until auto_stop.
+        self_stop = (
+            f'curl -sS --max-time 30 -X POST {DAYTONA_API_URL}/sandbox/{sandbox.id}/stop'
+            ' -H "Authorization: Bearer $DAYTONA_API_KEY"'
+        )
+        detached = (
+            f"{chain} && ok=1"
+            f"; cp /tmp/crawl.log {STATE}/data/"
+            f'; [ "$ok" = 1 ] && {self_stop}'
+        )
+        run(sandbox, f"nohup bash -c '{detached}' > /tmp/crawl.log 2>&1 & echo detached pid $!")
         print("crawl launched — check progress with --status")
     except BaseException:
         sandbox.delete()  # only on launch failure; on success it self-cleans
