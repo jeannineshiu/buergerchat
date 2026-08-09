@@ -4,9 +4,18 @@
 #
 # The volume is mounted at /data in the backend service; volume file paths
 # are relative to the volume root, so /faiss_index.bin lands at
-# /data/faiss_index.bin inside the container. The backend loads the index
-# lazily, so no restart is needed — /health flips from "degraded" to "ok"
-# on the next check after the upload.
+# /data/faiss_index.bin inside the container.
+#
+# FIRST population needs no restart: the backend loads the index lazily, so
+# /health flips from "degraded" to "ok" on the next check after the upload.
+#
+# UPDATING an existing index DOES need a restart (`railway redeploy`).
+# RAGPipeline.load() caches the index in memory for the life of the process
+# (rag.py returns early once self.index is set), but metadata.db is read from
+# disk per query via SQLAlchemy. Without a restart the old in-memory vectors
+# resolve their IDs against a rebuilt chunks table and the answers cite the
+# wrong sources. /health reports "loaded" in both cases and cannot tell them
+# apart — which is why the check below warns instead of claiming success.
 #
 # Prerequisites (one-time):
 #   npm i -g @railway/cli   (or: brew install railway)
@@ -59,13 +68,18 @@ for name in "${ARTIFACTS[@]}"; do
 done
 
 echo "==> upload complete"
+echo "==> if this REPLACED an existing index, redeploy now or the backend keeps"
+echo "    serving the old in-memory vectors against the new metadata.db:"
+echo "      railway redeploy --yes"
 
 if [ -n "${BACKEND_URL:-}" ]; then
     echo "==> checking ${BACKEND_URL%/}/health"
     health=$(curl -sf -m 15 "${BACKEND_URL%/}/health")
     echo "    $health"
     case "$health" in
-        *'"index":"loaded"'*) echo "==> backend is serving the index" ;;
+        # "loaded" does NOT prove the new file is what's in memory — see the
+        # header note. It only rules out an empty/unmounted volume.
+        *'"index":"loaded"'*) echo "==> backend has an index loaded (redeploy to be sure it is this one)" ;;
         *) echo "warning: index not loaded yet — check the volume mount path (/data) and DATA_DIR" >&2 ;;
     esac
 else
