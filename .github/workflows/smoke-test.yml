@@ -1,0 +1,32 @@
+# Periodic end-to-end check of the deployed backend: it asks /chat real
+# questions and verifies a real answer with sources comes back.
+#
+# Why not /health: on 2026-09-09 every /chat call 500'd for hours because
+# OpenAI had deprecated the default CHAT_MODEL, while /health kept
+# reporting `ok / index loaded` — it only knows about the FAISS index.
+# Only a call that reaches the LLM catches that.
+#
+# No secrets needed (the endpoint is public). GitHub emails the repo owner
+# when a scheduled workflow fails — and disables schedules in a repo with
+# no commits for 60 days, so a silent smoke test may mean a paused cron.
+name: smoke-test
+
+on:
+  schedule:
+    - cron: "17 */6 * * *" # every 6 hours, off the hour to dodge the cron rush
+  workflow_dispatch:
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      # Stdlib only — nothing to install.
+      - name: Ask the deployed backend real questions
+        run: python scripts/smoke_test.py
