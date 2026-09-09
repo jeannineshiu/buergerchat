@@ -354,11 +354,15 @@ class RAGPipeline:
         chitchat: bool = False,
         retrieval_query: str | None = None,
     ):
-        # Capability meta-questions and pure small talk both skip retrieval:
-        # random chunks would leak into the answer and the source list (see
-        # META rule in the system prompt, and the chitchat directive below).
+        # Capability meta-questions, pure small talk and "which office is
+        # responsible?" without a subject all skip retrieval: random chunks
+        # would leak into the answer and the source list (see META rule in
+        # the system prompt, and the directives below). The last one has
+        # nothing to retrieve on by definition — it is answered with a
+        # question back, and cited Baugenehmigung pages next to it only
+        # look like they belong to the answer.
         ordered_chunks = []
-        if not meta_only and not chitchat:
+        if not meta_only and not chitchat and not ask_for_topic:
             # retrieval_query: follow-ups like "say that in Chinese" carry no
             # searchable meaning of their own — the caller passes a query
             # enriched with the previous question instead.

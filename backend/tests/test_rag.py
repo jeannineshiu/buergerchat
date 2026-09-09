@@ -187,6 +187,16 @@ class TestQuery:
         prompt = pipeline.client.chat.completions.last_messages[-1]["content"]
         assert "Small Talk" in prompt
 
+    def test_ask_for_topic_skips_retrieval_and_sources(self, pipeline):
+        # "Which office is responsible?" with no subject is answered with a
+        # question back — citing whatever the embedding happened to match
+        # (Baugenehmigung, Gewerbe anmelden) only looks like evidence.
+        answer, sources = pipeline.query("Which office is responsible?", ask_for_topic=True)
+        assert answer == "STUB ANSWER"
+        assert sources == []
+        prompt = pipeline.client.chat.completions.last_messages[-1]["content"]
+        assert "worum es geht" in prompt
+
     def test_history_is_passed_and_truncated(self, pipeline):
         history = [{"role": "user", "content": f"msg{i}"} for i in range(10)]
         pipeline.query("Bürgergeld", history=history)
