@@ -49,6 +49,31 @@ STOPWORDS = {
 # Max organisation units whose detail we fetch while looking for an address.
 MAX_DETAIL_LOOKUPS = 4
 
+# PVOG's full-text search never answers "no match" — it always returns its
+# nearest rows, however far off they are. "Which office is responsible?"
+# (English, no topic) came back with the BaFin arbitration board in Bonn,
+# address included, and "Wo bekomme ich einen Personalausweis?" in Munich
+# with a certificate office in Cologne. So a hit only counts if the
+# Leistung it came from actually mentions what was searched for.
+#
+# The test is the query's most specific word: PVOG titles are verbose
+# ("Wohngeld - Mietzuschuss beantragen"), so a substring match on the
+# longest content word is both forgiving of German compounds and strict
+# enough to reject an unrelated service. Generic service vocabulary is
+# dropped first — otherwise "Wo beantrage ich Wohngeld?" would match
+# every "… beantragen" row in the register.
+# Stems are matched against already-folded text, so no umlauts here.
+GENERIC_STEMS = (
+    "beantrag", "antrag", "anmeld", "abmeld", "ummeld", "meldung", "melde",
+    "erhalt", "erteil", "ausstell", "bescheinig", "informat", "leistung",
+    "unterlagen", "formular", "zustaend", "behoerde", "stelle", "amtes",
+    "online",
+)
+MIN_TERM_LEN = 4
+ZIP_PATTERN = re.compile(r"\d{5}")
+_UMLAUTS = str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue", "ß": "ss"})
+_WORD_SPLIT = re.compile(r"\W+", re.UNICODE)
+
 # Berlin registers Leistungen at city level with every Bezirk's office
 # attached, so the user's Bezirk must be recovered from the PLZ to pick the
 # right unit (titles like "Jugendamt Treptow-Köpenick - Elterngeldstelle").
@@ -103,6 +128,37 @@ def strip_stopwords(query: str) -> str:
     return " ".join(words) or query
 
 
+def _normalize(text: str) -> str:
+    """Lowercase and fold umlauts, so a user's "buergergeld" matches
+    PVOG's "Bürgergeld" and vice versa."""
+    return text.lower().translate(_UMLAUTS)
+
+
+def key_terms(query: str) -> list[str]:
+    """The query's most specific words, in their original spelling — what
+    a matching Leistung must mention. Empty when the query carries no
+    searchable content at all ("Which office is responsible?" after
+    stopword stripping), which is the signal to trust nothing PVOG
+    returns for it."""
+    words = [
+        word
+        for word in _WORD_SPLIT.split(query)
+        if len(word) >= MIN_TERM_LEN
+        and not _normalize(word).startswith(GENERIC_STEMS)
+    ]
+    if not words:
+        return []
+    longest = max(len(word) for word in words)
+    return [word for word in words if len(word) == longest]
+
+
+def is_relevant(leistung_name: str, terms: list[str]) -> bool:
+    if not terms:
+        return False
+    name = _normalize(leistung_name)
+    return any(_normalize(term) in name for term in terms)
+
+
 @dataclass
 class BehoerdeResult:
     authority_name: str
@@ -124,6 +180,12 @@ class BehoerdeResult:
             parts.append(f"Website: {self.website}")
         return "\n".join(parts)
 
+    @property
+    def reachable(self) -> bool:
+        """Whether this result tells the user anything they can act on —
+        somewhere to go, call or click."""
+        return bool(self.street or self.phone or self.website)
+
     def source(self) -> dict:
         return {
             "title": f"{self.authority_name} — {self.service_name}",
@@ -141,13 +203,26 @@ class BehoerdeFinder:
         except httpx.HTTPError:
             return None
 
+    def _queries_for(self, query: str, topic: str | None) -> list[str]:
+        """Search terms to try, most reliable first: the topic's official
+        wording, then the user's own words, then just the key word.
+
+        The last one is not redundant — PVOG's ranking is thrown off by
+        the words around the service name: "bekomme Personalausweis" in
+        Munich returns one unrelated certificate service, "Personalausweis"
+        returns "Personalausweis; Beantragung" at the top.
+        """
+        stripped = strip_stopwords(query)
+        candidates = TOPIC_QUERIES.get(topic or "", []) + [stripped, *key_terms(stripped)]
+        return list(dict.fromkeys(q for q in candidates if q))
+
     def _get(self, path: str, params: dict) -> httpx.Response:
         response = self.client.get(path, params=params)
         response.raise_for_status()
         return response
 
     def _find(self, plz: str, query: str, topic: str | None) -> BehoerdeResult | None:
-        queries = TOPIC_QUERIES.get(topic or "", []) + [strip_stopwords(query)]
+        queries = self._queries_for(query, topic)
         fallback: BehoerdeResult | None = None
         ars_candidates, districts = self._candidate_ars(plz)
 
@@ -159,7 +234,16 @@ class BehoerdeFinder:
         # fallback once no local authority was found anywhere.
         for ars in ars_candidates:
             for q in queries:
-                leistungen = self._search_leistungen(ars, q)
+                terms = key_terms(q)
+                if not terms:
+                    # Nothing specific was asked for — every row PVOG
+                    # returns would be a guess with an address on it.
+                    continue
+                leistungen = [
+                    l
+                    for l in self._search_leistungen(ars, q)
+                    if is_relevant(l.get("name") or "", terms)
+                ]
                 local = [l for l in leistungen if not _is_federal(l)]
                 result = self._best_authority(ars, local[:3], districts)
                 if result and result.street:
@@ -227,7 +311,12 @@ class BehoerdeFinder:
                     return fallback
                 lookups += 1
                 result = self._unit_detail(unit["id"], service_name)
-                if result is None:
+                if result is None or not result.reachable:
+                    # A bare title is no help to anyone standing in front
+                    # of it: a Hamburg entry lists a unit called
+                    # "Informationen" with no address, phone or website,
+                    # and it used to win over the Familienkasse simply by
+                    # being local. Keep looking instead.
                     continue
                 if result.street:
                     return result
@@ -246,6 +335,13 @@ class BehoerdeFinder:
             (a for a in location.get("addresses", []) if a.get("type") == "Hausanschrift"),
             next(iter(location.get("addresses", [])), {}),
         )
+        # Some registers park placeholders in the address fields (a Hamburg
+        # entry ships street "siehe oben", zip "-----"). Printing that as
+        # an address is worse than having none: a result without a street
+        # keeps the search going and, failing that, is still reported
+        # honestly as name + phone.
+        if not ZIP_PATTERN.fullmatch((address.get("zip") or "").strip()):
+            address = {}
         phone = next(
             (c.get("value") for c in location.get("communications", []) if c.get("code") == "02"),
             None,

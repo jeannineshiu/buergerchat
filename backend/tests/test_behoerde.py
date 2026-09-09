@@ -5,7 +5,15 @@ that only name hotlines."""
 
 import httpx
 
-from behoerde import BehoerdeFinder, BehoerdeResult, strip_stopwords, _district_of, _is_federal
+from behoerde import (
+    BehoerdeFinder,
+    BehoerdeResult,
+    is_relevant,
+    key_terms,
+    strip_stopwords,
+    _district_of,
+    _is_federal,
+)
 
 BERLIN_DEEP_ARS = "110010001001"
 BERLIN_CITY_ARS = "110000000000"
@@ -154,7 +162,11 @@ class TestFind:
             if path.endswith("/v2/organisationunits/titles"):
                 return httpx.Response(200, json=[{"id": "B1.OE.9", "title": "Familienkasse Hotline", "role": {"code": "03"}}])
             if path.endswith("/v5/organisationunits/detail"):
-                return httpx.Response(200, json={"title": "Familienkasse Hotline", "location": {}, "internetAddresses": []})
+                return httpx.Response(200, json={
+                    "title": "Familienkasse Hotline",
+                    "location": {"communications": [{"code": "02", "value": "+49 800 4555530"}]},
+                    "internetAddresses": [],
+                })
             raise AssertionError(path)
 
         finder = make_finder(handler)
@@ -162,6 +174,100 @@ class TestFind:
         assert result is not None
         assert result.authority_name == "Familienkasse Hotline"
         assert result.street is None
+        assert result.phone == "+49 800 4555530"
+
+
+class TestRelevanceGuard:
+    """PVOG always answers with its nearest rows, never with "no match" —
+    so an off-topic query used to come back with a confident address."""
+
+    def unrelated_stub(self, expect_queries=None):
+        def handler(request):
+            path = request.url.path
+            if path.endswith("/v3/locations/details"):
+                return httpx.Response(200, json=[{"ars": BERLIN_CITY_ARS, "plz": "10115"}])
+            if "/v7/servicedescriptions/" in path:
+                if expect_queries is not None:
+                    expect_queries.append(request.url.params.get("q"))
+                content = [{
+                    "id": "B1.LB.1",
+                    "name": "Einen Streit bei der Schlichtungsstelle der BaFin schlichten",
+                    "ars": ["000000000000"],
+                }]
+                return httpx.Response(200, json={"serviceDescriptions": {"content": content}})
+            raise AssertionError(f"lookup should stop before {path}")
+
+        return handler
+
+    def test_unrelated_leistung_is_not_offered_as_the_authority(self):
+        finder = make_finder(self.unrelated_stub())
+        assert finder.find("10115", "Wo beantrage ich Wohngeld?", topic="wohngeld") is None
+
+    def test_foreign_language_question_matches_no_german_service(self):
+        # "Which office is responsible?" names no German service — a
+        # postcode alone cannot determine a Behörde, yet PVOG answered it
+        # with the BaFin arbitration board in Bonn, address included.
+        finder = make_finder(self.unrelated_stub())
+        assert finder.find("10115", "Which office is responsible?", topic="allgemein") is None
+
+    def test_query_without_content_words_is_not_searched_at_all(self):
+        # Nothing specific was named, so there is nothing to verify a hit
+        # against — the lookup must not even ask.
+        queries = []
+        finder = make_finder(self.unrelated_stub(queries))
+        assert finder.find("10115", "Wo ist das Amt?", topic="allgemein") is None
+        assert queries == []
+
+    def test_searches_the_key_word_on_its_own_too(self):
+        # PVOG's ranking is thrown off by the words around the service name:
+        # "bekomme Personalausweis" returns one unrelated certificate
+        # service, "Personalausweis" the actual Bürgeramt service.
+        queries = []
+        finder = make_finder(self.unrelated_stub(queries))
+        finder.find("10115", "Wo bekomme ich einen Personalausweis?", topic="allgemein")
+        assert "Personalausweis" in queries
+
+
+class TestUnusableUnits:
+    def units_stub(self, detail):
+        def handler(request):
+            path = request.url.path
+            if path.endswith("/v3/locations/details"):
+                return httpx.Response(200, json=[{"ars": BERLIN_CITY_ARS, "plz": "10115"}])
+            if "/v7/servicedescriptions/" in path:
+                content = [{"id": "L1.LB.2", "name": "Kindergeld Informationen", "ars": [BERLIN_CITY_ARS]}]
+                return httpx.Response(200, json={"serviceDescriptions": {"content": content}})
+            if path.endswith("/v2/organisationunits/titles"):
+                return httpx.Response(200, json=[{"id": "L1.OE.7", "title": "Informationen", "role": {"code": "03"}}])
+            if path.endswith("/v5/organisationunits/detail"):
+                return httpx.Response(200, json=detail)
+            raise AssertionError(path)
+
+        return handler
+
+    def test_unit_without_any_contact_detail_is_skipped(self):
+        # A Hamburg entry lists a unit called "Informationen" with no
+        # address, phone or website; being local, it used to beat the
+        # Familienkasse. A name alone helps nobody.
+        finder = make_finder(self.units_stub({
+            "title": "Informationen", "location": {}, "internetAddresses": [],
+        }))
+        assert finder.find("10115", "Kindergeld", topic="kindergeld") is None
+
+    def test_placeholder_address_is_dropped_but_contact_kept(self):
+        # Same entry, seen through /v5: street "siehe oben", zip "-----".
+        finder = make_finder(self.units_stub({
+            "title": "Informationen",
+            "location": {
+                "addresses": [{"type": "Hausanschrift", "street": "siehe oben", "zip": "-----", "city": "-"}],
+                "communications": [{"code": "02", "value": "+49 40 1"}],
+            },
+            "internetAddresses": [],
+        }))
+        result = finder.find("10115", "Kindergeld", topic="kindergeld")
+        assert result is not None
+        assert result.street is None and result.zip is None
+        assert result.phone == "+49 40 1"
 
 
 class TestTopicQueries:
@@ -200,6 +306,21 @@ class TestHelpers:
 
     def test_strip_stopwords_never_returns_empty(self):
         assert strip_stopwords("wo kann ich") == "wo kann ich"
+
+    def test_key_terms_picks_the_most_specific_word(self):
+        assert key_terms("Wo beantrage ich Wohngeld") == ["Wohngeld"]
+        # Generic service vocabulary must not become the key term, or every
+        # "… beantragen" row in the register would count as a match.
+        assert key_terms("melde Wohnsitz") == ["Wohnsitz"]
+
+    def test_key_terms_empty_when_nothing_specific_was_asked(self):
+        assert key_terms("Wo ist das Amt") == []
+
+    def test_is_relevant_matches_compounds_and_folds_umlauts(self):
+        assert is_relevant("Bürgergeld / Grundsicherungsgeld; Beantragung", ["buergergeld"])
+        assert is_relevant("Wohngeld - Mietzuschuss beantragen", key_terms("Wohngeld"))
+        assert not is_relevant("Arbeitslos melden", key_terms("melde Wohnsitz"))
+        assert not is_relevant("Kindergeld beantragen", [])
 
     def test_is_federal(self):
         assert _is_federal({"ars": ["000000000000"]})

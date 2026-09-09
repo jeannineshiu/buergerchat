@@ -174,10 +174,18 @@ def chat(request: Request, chat_request: ChatRequest) -> ChatResponse:
 
     authority = None
     ask_for_plz = False
+    ask_for_topic = False
     authority_missing = False
     if wants_authority and plz:
         authority = behoerde_finder.find(plz, lookup_query, topic=topic)
-        authority_missing = authority is None
+        # A postcode alone does not determine a Behörde — responsibility is
+        # per service. When the lookup came back empty and the message never
+        # said what it is about ("Which office is responsible? 10115"), ask
+        # rather than send the person off to a generic search page.
+        if authority is None and topic == DEFAULT_TOPIC:
+            ask_for_topic = True
+        else:
+            authority_missing = authority is None
     elif wants_authority:
         ask_for_plz = True
 
@@ -187,6 +195,7 @@ def chat(request: Request, chat_request: ChatRequest) -> ChatResponse:
         topic=topic,
         authority=authority,
         ask_for_plz=ask_for_plz,
+        ask_for_topic=ask_for_topic,
         authority_missing=authority_missing,
         history=[m.model_dump() for m in chat_request.history],
         retrieval_query=retrieval_query,

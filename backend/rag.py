@@ -347,6 +347,7 @@ class RAGPipeline:
         topic: str | None = None,
         authority: BehoerdeResult | None = None,
         ask_for_plz: bool = False,
+        ask_for_topic: bool = False,
         authority_missing: bool = False,
         history: list[dict] | None = None,
         meta_only: bool = False,
@@ -395,6 +396,15 @@ class RAGPipeline:
                 "Die Person möchte wissen, welche Stelle zuständig ist, hat aber "
                 "keinen Ort genannt. Bitte sie (in der Antwortsprache) um ihre "
                 "Postleitzahl, damit du die zuständige Stelle nennen kannst."
+            )
+        if ask_for_topic:
+            directives.append(
+                "Die Person möchte wissen, welche Stelle zuständig ist, hat aber "
+                "nicht gesagt, worum es geht — und ohne Anliegen lässt sich keine "
+                "Zuständigkeit bestimmen. NENNE KEINE Behörde und ERFINDE KEINE "
+                "Adressen. Frage stattdessen (in der Antwortsprache) in einem Satz, "
+                "worum es geht, und nenne dabei Beispiele: Bürgergeld/"
+                "Grundsicherungsgeld, Kindergeld, Wohngeld, Rente, Aufenthalt."
             )
         if authority_missing:
             directives.append(

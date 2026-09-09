@@ -18,11 +18,13 @@ def client(monkeypatch):
     calls = {}
 
     def fake_query(message, language="de", topic=None, authority=None,
-                   ask_for_plz=False, authority_missing=False, history=None,
-                   meta_only=False, chitchat=False, retrieval_query=None):
+                   ask_for_plz=False, ask_for_topic=False, authority_missing=False,
+                   history=None, meta_only=False, chitchat=False,
+                   retrieval_query=None):
         calls["query"] = {
             "message": message, "language": language, "topic": topic,
             "authority": authority, "ask_for_plz": ask_for_plz,
+            "ask_for_topic": ask_for_topic,
             "authority_missing": authority_missing, "meta_only": meta_only,
             "chitchat": chitchat, "retrieval_query": retrieval_query,
         }
@@ -97,6 +99,17 @@ class TestChat:
     def test_failed_lookup_sets_authority_missing(self, client):
         client.post("/chat", json={"message": "Wo ist mein Jobcenter? PLZ 99999"})
         assert client.calls["query"]["authority_missing"] is True
+        assert client.calls["query"]["ask_for_topic"] is False
+
+    def test_failed_lookup_without_a_topic_asks_what_it_is_about(self, client):
+        # A postcode alone does not determine a Behörde — responsibility is
+        # per service. "Which office is responsible? 10115" used to be
+        # answered with whatever PVOG's full-text search ranked first.
+        # 99999 is the stub's "PVOG found nothing" postcode.
+        client.post("/chat", json={"message": "Which office is responsible? 99999"})
+        assert client.calls["query"]["topic"] == "allgemein"
+        assert client.calls["query"]["ask_for_topic"] is True
+        assert client.calls["query"]["authority_missing"] is False
 
     def test_meta_question_skips_retrieval_and_has_no_sources(self, client):
         r = client.post("/chat", json={"message": "Welche Fragen kann ich dir stellen?"})
