@@ -27,7 +27,7 @@ buergerchat/
 - `backend/app/db.py`, `backend/app/models.py` — SQLAlchemy engine + `Chunk` model (`chunks` table; `id` doubles as the FAISS vector ID).
 - `crawler/arbeitsagentur_crawler.py` — sitemap-driven crawl of arbeitsagentur.de, topic-filtered by URL keywords → `crawler/output/arbeitsagentur.jsonl`. Incremental: re-running skips already-crawled URLs and appends.
 - `crawler/gesetze_crawler.py` — 9 laws (SGB I/II/VI/VIII/X/XII, BKGG, WoGG, AufenthG) from gesetze-im-internet.de, one record per § section → `crawler/output/gesetze.jsonl`. Site pages are ISO-8859-1, not UTF-8.
-- `crawler/portal_crawler.py` — one configurable crawler for the portal sites → `crawler/output/portal_<site>.jsonl`: familienportal.de (family benefits), bzst.de (Steuer-ID/taxes; **robots Crawl-delay 30s**, only `/DE/Privatpersonen/`), deutsche-rentenversicherung.de (Rente; Crawl-delay 12s), bmwsb.bund.de (Wohngeld), bamf.de (Aufenthalt; no sitemap → BFS restricted to `/DE/Themen/`, depth ≤ 3), service.berlin.de (~600 Berlin Dienstleistungen; BFS from the German index, numeric detail pages only, topic `berlin`). Sitemap-driven otherwise, incremental like the arbeitsagentur crawler. `python portal_crawler.py [site ...] [--limit N]`. Uses the lxml parser — service.berlin.de markup breaks bs4's html.parser (loses `<body>`).
+- `crawler/portal_crawler.py` — one configurable crawler for the portal sites → `crawler/output/portal_<site>.jsonl`: familienportal.de (family benefits), bzst.de (Steuer-ID/taxes; **robots Crawl-delay 30s**, only `/DE/Privatpersonen/`), deutsche-rentenversicherung.de (Rente; Crawl-delay 12s), bmwsb.bund.de (Wohngeld), bamf.de (Aufenthalt; no sitemap → BFS restricted to `/DE/Themen/`, depth ≤ 3), service.berlin.de (~1,100 Berlin Dienstleistungen; BFS from the German index, numeric detail pages only, topic `berlin`), elster.de (using the tax portal — registration, certificates, einfachELSTER; no robots.txt and no sitemap → BFS from three `/infoseite` seeds, depth ≤ 3, topic `steuern`; the actual form guidance sits behind login). Sitemap-driven otherwise, incremental like the arbeitsagentur crawler. `python portal_crawler.py [site ...] [--limit N]`. Uses the lxml parser — service.berlin.de markup breaks bs4's html.parser (loses `<body>`).
 - `crawler/build_index.py` — merge JSONLs → chunk (800 chars / 100 overlap) → OpenAI embeddings → writes `data/faiss_index.bin` + `data/metadata.db` (drop-and-recreate, full re-embed each run).
 - `crawler/main.py` — placeholder, unused.
 
@@ -60,7 +60,7 @@ API at `http://localhost:8000`. Startup requires `OPENAI_API_KEY` set and `data/
 cd crawler
 python arbeitsagentur_crawler.py   # ~45 min full crawl (rate-limited)
 python gesetze_crawler.py          # seconds (9 requests)
-python portal_crawler.py           # ~1.5-2 h all five portals (bzst's 30s crawl-delay dominates)
+python portal_crawler.py           # ~2-2.5 h all seven portals (DRV's 381 pages × 12s and bzst's 30s crawl-delay dominate)
 python build_index.py              # merge + chunk + embed + write data/
 ```
 
@@ -75,9 +75,9 @@ npm run dev     # http://localhost:3000, expects backend on :8000 (NEXT_PUBLIC_A
 ### Tests
 
 ```bash
-cd backend && pip install -r requirements-dev.txt && python -m pytest tests/   # 85 tests
-cd crawler && python -m pytest tests/                                          # 21 tests
-cd frontend && npm test                                                        # 13 tests (vitest)
+cd backend && pip install -r requirements-dev.txt && python -m pytest tests/   # 96 tests
+cd crawler && python -m pytest tests/                                          # 41 tests
+cd frontend && npm test                                                        # 21 tests (vitest)
 ```
 
 **Evals (online, cost money — don't run casually):** `cd backend && python evals/run_evals.py` = retrieval recall@5 per language against the real index + OpenAI embeddings (~$0.001); `--answers [--limit N]` adds real chat completions. Golden set in `backend/evals/golden.jsonl` — markers must exist in metadata.db (topic + all markers in one chunk), facts must be language-neutral (digits / German proper nouns). Baseline 2026-07-18 (stale corpus, no query translation): retrieval de 84% / en 95% / zh-Hant 63%; answers de 88% / en 88% / zh-Hant 62%; every answer failure tracked a retrieval miss. 2026-07-19, after re-crawl + query→German translation (all queries except de/en — embedding aligns ONLY German and English well with the German corpus; tr/pl/vi/id sat at 68% recall before translating too): all-13-language answer eval ≈96–99% per language; the remaining tail is one ranking issue (buergergeld-regelsatz in zh/ko) plus scattered per-language retrieval misses (steuerid-wo, kinderzuschlag-hoehe, arbeitsuchend-frist — also missed in German, so ranking, not language). 2026-07-21: `kinderzuschlag-hoehe` turned out to be a golden.jsonl labeling bug, not a retrieval miss — its chunk is crawled under topic `kindergeld`, not the `familie-und-kinder` the golden item claimed, so `chunk_is_relevant()`'s exact-topic check always failed it; fixed in golden.jsonl, retrieval recall@5 (de/en/zh-Hant) moved 89/100/89% → 95/100/95%. `steuerid-wo` (de) and `arbeitsuchend-frist` also turned out to already pass/fail independent of that bug on the current corpus — treat this whole line's misses list as stale until re-verified; a hybrid FTS5-keyword+vector retrieval fusion was tried to fix the remaining misses and reverted (net-hurt recall — see memory). Answer facts must tolerate locale number formats (space/NBSP thousands separators, Eastern Arabic digits) — Slavic locales write "1 800 €" and the eval falsely failed before those variants were added.

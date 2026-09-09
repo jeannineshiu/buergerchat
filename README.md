@@ -42,7 +42,7 @@ BürgerChat's topic priorities (benefits, family, housing, residence) follow tha
 
 ## What it knows
 
-~4,800 documents (≈28,000 searchable passages) from official federal sources only:
+~6,100 documents (≈36,000 searchable passages) from official government sources only:
 
 - **arbeitsagentur.de** — Bürgergeld, Kindergeld, unemployment
 - **familienportal.de** — all family benefits (BMFSFJ)
@@ -66,20 +66,21 @@ Topic selection follows the documented demand of migration counseling services (
 ┌──────────┐   POST /chat    ┌─────────────────────────────────────────┐
 │ Next.js  │ ──────────────► │ FastAPI backend                         │
 │ chat UI  │                 │  1. topic + intent routing (rule-based) │
-└──────────┘                 │  2. FAISS retrieval (27k chunks)        │
+└──────────┘                 │  2. FAISS retrieval + rerank (36k)      │
                              │  3. live PVOG authority lookup (by PLZ) │
      ▲                       │  4. answer via LLM, grounded + cited    │
      │ sources, feedback     └─────────────────────────────────────────┘
      ▼                                        ▲
 ┌──────────┐    build_index   ┌───────────────┐
 │ feedback │                  │ crawlers      │  sitemap/BFS, robots-
-│ (SQLite) │                  │ (5 portals +  │  compliant, incremental
+│ (SQLite) │                  │ (7 portals +  │  compliant, incremental
 └──────────┘                  │  laws + BA)   │
                               └───────────────┘
 ```
 
 - **Frontend**: Next.js (App Router, Tailwind), markdown-rendered answers, RTL support, per-message 👍/👎 and per-session star feedback
 - **Backend**: FastAPI + FAISS (cosine over `text-embedding-3-small`) + OpenAI chat model (`gpt-5.5`, override via `CHAT_MODEL`)
+- **Reranking** (`RERANK=1`, on in production): the vector search widens to 30 candidates and an LLM appends up to 3 extra picks *after* the untouched top-5. Union, not swap — swapping was zero-sum, the union took golden retrieval recall to 100% in all three eval languages, at one extra chat call per query
 - **Authority finder**: live queries against the public PVOG Suchdienst API (PLZ → ARS → service → responsible organisation unit)
 - **Crawlers**: sitemap-driven (or restricted BFS), honor robots.txt including per-site crawl delays, re-runnable incrementally
 - **Deployment**: two Docker services on Railway; index artifacts live on a volume (`/data`), uploaded via `scripts/upload-index.sh`
@@ -98,7 +99,7 @@ pip install -r backend/requirements.txt -r crawler/requirements.txt
 cd crawler
 python arbeitsagentur_crawler.py   # ~45 min
 python gesetze_crawler.py          # seconds
-python portal_crawler.py           # ~1.5-2 h (robots crawl-delays)
+python portal_crawler.py           # ~2-2.5 h (robots crawl-delays)
 python build_index.py              # chunk + embed + write data/
 
 # 3. Backend
@@ -131,8 +132,8 @@ npm run dev                        # http://localhost:3000
 
 **Correctness**
 
-- **Golden-question evals** (`backend/evals/`): 19 questions with corpus-verified expected facts, in German, English and Chinese. `python evals/run_evals.py` measures retrieval recall@5 per language (embedding cost only); `--answers` adds full answer checks (facts, cited source, answer language). Run before/after every prompt, model, chunking or crawl change.
-- **Offline test suites**: 77 backend + 24 crawler + 21 frontend tests run without network or API keys (OpenAI, FAISS and PVOG are stubbed).
+- **Golden-question evals** (`backend/evals/`): 19 questions with corpus-verified expected facts, each phrased in all 13 answer languages. `python evals/run_evals.py` measures retrieval recall@5 for de/en/zh-Hant (embedding cost only; `--languages all` covers the other ten); `--answers` adds full answer checks (facts, cited source, answer language). Run before/after every prompt, model, chunking or crawl change.
+- **Offline test suites**: 96 backend + 41 crawler + 21 frontend tests run without network or API keys (OpenAI, FAISS and PVOG are stubbed).
 - **CI on every push/PR** (`.github/workflows/ci.yml`): lint (ruff / eslint) + tests + `npm run build` (doubles as a typecheck) for all three modules, independently. Nothing merges on faith — the checks are the same ones described above, just automatic.
 - **Production smoke test every 6 hours** (`scripts/smoke_test.py`, triggered by `.github/workflows/smoke-test.yml`): asks the deployed backend two real questions and checks the answer, the sources, the routed topic and the CORS header. `/health` only knows whether the index loaded — when OpenAI deprecated the answer model, every `/chat` call returned 500 while `/health` still reported `ok`. A monitor that never reaches the LLM would not have noticed.
 - **Weekly re-crawl in Daytona sandboxes** (`scripts/daytona_recrawl.py`, triggered Sundays by `.github/workflows/weekly-crawl.yml`): an ephemeral [Daytona](https://www.daytona.io) sandbox crawls incrementally (state persists in a Daytona volume), rebuilds the index and stores it in the volume; `--download` pulls the latest index locally. Benefit amounts change every January — the eval baseline already caught the corpus drifting (Kindergeld 255 € in the 2025 crawl vs 259 € in 2026).
@@ -151,3 +152,7 @@ npm run dev                        # http://localhost:3000
 ## For contributors
 
 Module-level conventions, schemas and operational details live in [CLAUDE.md](CLAUDE.md). The three modules (frontend / backend / crawler) are deliberately decoupled — crawler and backend share data schemas, never code.
+
+## License
+
+[MIT](LICENSE)
