@@ -79,7 +79,7 @@ Topic selection follows the documented demand of migration counseling services (
 ```
 
 - **Frontend**: Next.js (App Router, Tailwind), markdown-rendered answers, RTL support, per-message 👍/👎 and per-session star feedback
-- **Backend**: FastAPI + FAISS (cosine over `text-embedding-3-small`) + OpenAI chat model (`gpt-5.3-chat-latest`, override via `CHAT_MODEL`)
+- **Backend**: FastAPI + FAISS (cosine over `text-embedding-3-small`) + OpenAI chat model (`gpt-5.5`, override via `CHAT_MODEL`)
 - **Authority finder**: live queries against the public PVOG Suchdienst API (PLZ → ARS → service → responsible organisation unit)
 - **Crawlers**: sitemap-driven (or restricted BFS), honor robots.txt including per-site crawl delays, re-runnable incrementally
 - **Deployment**: two Docker services on Railway; index artifacts live on a volume (`/data`), uploaded via `scripts/upload-index.sh`

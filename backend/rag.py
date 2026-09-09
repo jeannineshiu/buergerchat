@@ -24,10 +24,13 @@ EMBEDDING_MODEL = "text-embedding-3-small"
 # Model history (all A/B-tested on zh answers): gpt-4o-mini code-switched
 # German into zh-Hans; gpt-5.4-mini fixed that but kept ending answers with
 # "if you want, I can …" offers despite explicit bans (2/4 runs); the
-# chat-tuned gpt-5.3-chat-latest follows the style rules (0/4). It is an
-# unpinned alias — if behavior shifts after an OpenAI update, re-run the
-# style checks and adjust via the CHAT_MODEL env var.
-CHAT_MODEL = os.environ.get("CHAT_MODEL", "gpt-5.3-chat-latest")
+# chat-tuned gpt-5.3-chat-latest followed the style rules (0/4) and ran in
+# production until OpenAI deprecated it — every /chat call started returning
+# 404 model_not_found (2026-09-09 outage). The whole *-chat-latest line is
+# gone (5.1/5.2/5.3 all 404), so the default is now the plain gpt-5.5, which
+# passed the same style checks (0/4 offers, 0/4 script leaks on zh-Hant).
+# Override via the CHAT_MODEL env var; re-run the style checks when changing.
+CHAT_MODEL = os.environ.get("CHAT_MODEL", "gpt-5.5")
 TOP_K = 5
 
 # Vector similarity alone cannot separate the answer from the noise on
