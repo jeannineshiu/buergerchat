@@ -1,5 +1,6 @@
-# Periodic end-to-end check of the deployed backend: it asks /chat real
-# questions and verifies a real answer with sources comes back.
+# Periodic end-to-end check of the deployed app: it asks /chat real
+# questions through the frontend's /api proxy (the path a browser takes)
+# and verifies a real answer with sources comes back.
 #
 # Why not /health: on 2026-09-09 every /chat call 500'd for hours because
 # OpenAI had deprecated the default CHAT_MODEL, while /health kept
@@ -28,5 +29,5 @@ jobs:
           python-version: "3.11"
 
       # Stdlib only — nothing to install.
-      - name: Ask the deployed backend real questions
+      - name: Ask the deployed app real questions
         run: python scripts/smoke_test.py

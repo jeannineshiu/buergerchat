@@ -8,7 +8,7 @@ import { getFollowUps } from "@/lib/followups";
 import { LanguageSelect } from "@/components/LanguageSelect";
 import { SessionFeedback } from "@/components/SessionFeedback";
 import { sendChatMessage } from "@/lib/api";
-import { getStrings, RTL_LANGUAGES } from "@/lib/i18n";
+import { errorText, getStrings, RTL_LANGUAGES } from "@/lib/i18n";
 import { loadLanguage, saveLanguage } from "@/lib/storage";
 
 function BrandMark() {
@@ -117,8 +117,8 @@ export default function Home() {
           topic: response.topic,
         },
       ]);
-    } catch {
-      setError(t.errorMessage);
+    } catch (err) {
+      setError(errorText(t, err));
     } finally {
       setIsLoading(false);
     }

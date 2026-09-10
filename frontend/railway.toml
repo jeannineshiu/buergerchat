@@ -1,10 +1,11 @@
 # Railway config for the frontend service (config-as-code is per-service —
 # set this service's Root Directory to `frontend` in the Railway dashboard).
 #
-# Required service variable (set in the dashboard, it becomes a Docker build
-# arg): NEXT_PUBLIC_API_URL = https://${{backend.RAILWAY_PUBLIC_DOMAIN}}
-# It must be the backend's PUBLIC domain — the browser calls it directly,
-# so the .railway.internal URL would not be reachable.
+# Required service variable (runtime, read by the /api proxy in
+# src/lib/proxy.ts): BACKEND_URL = http://${{buergerchat.RAILWAY_PRIVATE_DOMAIN}}:8080
+# The browser never calls the backend itself — it calls this service's /api,
+# and the Next server forwards over Railway's private network. 8080 is the
+# PORT Railway injects into the backend.
 [build]
 builder = "dockerfile"
 dockerfilePath = "Dockerfile"

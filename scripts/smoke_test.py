@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Smoke-test the deployed backend by asking it real questions.
+"""Smoke-test the deployed app by asking it real questions.
 
 Motivated by the 2026-09-09 outage: OpenAI deprecated the model that was
 `CHAT_MODEL`'s default, so every /chat call 500'd for hours while nothing
@@ -8,11 +8,17 @@ whether the FAISS index is loaded, and it was. Only an end-to-end call
 that actually reaches the LLM catches that class of failure, so this
 script makes one (per language) and checks the response is a real answer.
 
+It goes through the frontend's same-origin /api proxy — the exact path a
+browser takes — so a broken proxy or a wrong BACKEND_URL on the frontend
+service fails it too. Pointing --base-url at the backend itself also works
+(same /health and /chat paths).
+
 Stdlib only, no dependencies: it runs from a bare GitHub Actions runner
 (see .github/workflows/smoke-test.yml) and from any local shell.
 
     python scripts/smoke_test.py
-    python scripts/smoke_test.py --base-url http://localhost:8000
+    python scripts/smoke_test.py --base-url http://localhost:3000/api
+    python scripts/smoke_test.py --base-url http://localhost:8000   # backend only
 
 Exit code 0 = healthy, 1 = something is broken (details on stderr).
 Each run costs a couple of OpenAI calls per query — with RERANK=1 that is
@@ -28,8 +34,7 @@ import time
 import urllib.error
 import urllib.request
 
-DEFAULT_BASE_URL = "https://buergerchat-production.up.railway.app"
-DEFAULT_FRONTEND_ORIGIN = "https://buergerchat.up.railway.app"
+DEFAULT_BASE_URL = "https://buergerchat.up.railway.app/api"
 
 # One query per language family we care about, with the topic the
 # rule-based router must assign. Topics are deterministic (router.py is
@@ -52,24 +57,29 @@ class SmokeFailure(Exception):
     """A check failed; the message is what gets reported."""
 
 
-def _request(url, *, payload=None, origin=None, timeout=30):
-    """Return (status, headers, parsed_body). Raises SmokeFailure on transport errors."""
+def _request(url, *, payload=None, timeout=30):
+    """Return (status, parsed_body). Raises SmokeFailure on transport errors."""
     data = json.dumps(payload).encode() if payload is not None else None
     headers = {"Content-Type": "application/json"} if data else {}
-    if origin:
-        headers["Origin"] = origin
     request = urllib.request.Request(url, data=data, headers=headers)
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             body = response.read().decode()
-            status, response_headers = response.status, response.headers
+            status = response.status
     except urllib.error.HTTPError as exc:
         # An error response still carries a body — FastAPI's detail or the
         # 503 {"error": ...} the backend returns while the index is missing.
         # A 500 body is just "Internal Server Error"; the traceback that
         # names the actual cause is only in the service log.
         body = exc.read().decode(errors="replace")[:500]
-        hint = " (see `railway logs -s buergerchat`)" if exc.code >= 500 else ""
+        # 502/504 come from the frontend proxy (backend unreachable / timed
+        # out); other 5xx from the backend itself.
+        if exc.code in (502, 504):
+            hint = " (proxy: check BACKEND_URL / `railway logs -s profound-balance`)"
+        elif exc.code >= 500:
+            hint = " (see `railway logs -s buergerchat`)"
+        else:
+            hint = ""
         raise SmokeFailure(f"HTTP {exc.code} from {url}: {body}{hint}") from exc
     except (urllib.error.URLError, TimeoutError) as exc:
         raise SmokeFailure(f"could not reach {url}: {exc}") from exc
@@ -78,11 +88,11 @@ def _request(url, *, payload=None, origin=None, timeout=30):
         parsed = json.loads(body)
     except json.JSONDecodeError:
         parsed = None
-    return status, response_headers, parsed
+    return status, parsed
 
 
 def check_health(base_url):
-    _, _, body = _request(f"{base_url}/health")
+    _, body = _request(f"{base_url}/health")
     if not isinstance(body, dict):
         raise SmokeFailure("/health did not return JSON")
     # /health is 200 even when broken: `degraded` means the volume has no
@@ -92,11 +102,10 @@ def check_health(base_url):
     return "/health: ok, index loaded"
 
 
-def check_chat(base_url, query, origin):
-    _, headers, body = _request(
+def check_chat(base_url, query):
+    _, body = _request(
         f"{base_url}/chat",
         payload={"message": query["message"], "language": query["language"], "history": []},
-        origin=origin,
         timeout=CHAT_TIMEOUT,
     )
     if not isinstance(body, dict):
@@ -117,26 +126,16 @@ def check_chat(base_url, query, origin):
     if topic != query["topic"]:
         raise SmokeFailure(f"{label} routed to topic {topic!r}, expected {query['topic']!r}")
 
-    # The browser talks to this endpoint cross-origin, so a FRONTEND_ORIGIN
-    # that no longer matches the deployed frontend breaks the app while
-    # every server-side check above still passes.
-    allowed = headers.get("Access-Control-Allow-Origin")
-    if allowed != origin:
-        raise SmokeFailure(
-            f"{label} CORS: Access-Control-Allow-Origin is {allowed!r}, expected {origin!r} "
-            "— check FRONTEND_ORIGIN on the backend service"
-        )
-
     return f"{label}: {len(answer)} chars, {len(sources)} sources, topic {topic}"
 
 
-def run_checks(base_url, origin):
+def run_checks(base_url):
     """Run every check, collecting failures instead of stopping at the first."""
     passed, failed = [], []
     for name, check in [
         ("health", lambda: check_health(base_url)),
         *[
-            (f"chat-{q['language']}", (lambda q=q: check_chat(base_url, q, origin)))
+            (f"chat-{q['language']}", (lambda q=q: check_chat(base_url, q)))
             for q in QUERIES
         ],
     ]:
@@ -152,12 +151,7 @@ def main():
     parser.add_argument(
         "--base-url",
         default=os.environ.get("SMOKE_BASE_URL", DEFAULT_BASE_URL),
-        help="backend base URL (env: SMOKE_BASE_URL)",
-    )
-    parser.add_argument(
-        "--origin",
-        default=os.environ.get("SMOKE_FRONTEND_ORIGIN", DEFAULT_FRONTEND_ORIGIN),
-        help="origin the CORS check expects to be allowed (env: SMOKE_FRONTEND_ORIGIN)",
+        help="API base URL: the frontend's /api proxy or the backend (env: SMOKE_BASE_URL)",
     )
     parser.add_argument(
         "--retry-delay",
@@ -169,7 +163,7 @@ def main():
     base_url = args.base_url.rstrip("/")
 
     print(f"Smoke-testing {base_url}", flush=True)
-    passed, failed = run_checks(base_url, args.origin)
+    passed, failed = run_checks(base_url)
 
     # A deploy restart or a blip should not page anyone; a real breakage
     # survives one retry.
@@ -178,7 +172,7 @@ def main():
         for failure in failed:
             print(f"  first attempt: {failure}", flush=True)
         time.sleep(args.retry_delay)
-        passed, failed = run_checks(base_url, args.origin)
+        passed, failed = run_checks(base_url)
 
     for line in passed:
         print(f"PASS  {line}")

@@ -8,11 +8,8 @@ RUN npm ci
 
 COPY . .
 
-# NEXT_PUBLIC_* is inlined into the client bundle at build time, so it must
-# arrive as a build arg (Railway passes service variables to Dockerfile ARGs).
-ARG NEXT_PUBLIC_API_URL
-ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
-
+# No build-time API URL: the browser calls the same-origin /api proxy, and
+# the proxy reads BACKEND_URL at runtime (src/lib/proxy.ts).
 RUN npm run build
 
 FROM node:20-alpine AS runner

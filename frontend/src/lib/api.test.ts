@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { sendChatMessage, sendMessageFeedback, sendSessionFeedback } from "@/lib/api";
+import {
+  ChatError,
+  sendChatMessage,
+  sendMessageFeedback,
+  sendSessionFeedback,
+} from "@/lib/api";
 
 function mockFetch(status = 200, body: unknown = {}) {
   const fn = vi.fn().mockResolvedValue({
@@ -35,9 +40,34 @@ describe("sendChatMessage", () => {
     expect(JSON.parse(fetchMock.mock.calls[0][1].body).history).toEqual([]);
   });
 
+  it("calls the same-origin proxy, never a cross-site backend URL", async () => {
+    const fetchMock = mockFetch(200, { answer: "a", sources: [], topic: "t" });
+    await sendChatMessage("Frage", "de");
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/chat");
+  });
+
   it("throws on non-ok responses", async () => {
     mockFetch(503);
     await expect(sendChatMessage("Frage", "de")).rejects.toThrow("503");
+  });
+
+  it.each([
+    [429, "rateLimit"],
+    [500, "server"],
+    [502, "server"],
+    [503, "server"],
+    [504, "server"],
+    [422, "other"],
+  ] as const)("classifies HTTP %i as %s", async (status, kind) => {
+    mockFetch(status);
+    await expect(sendChatMessage("Frage", "de")).rejects.toMatchObject({ kind, status });
+  });
+
+  it("classifies a fetch that never got a response as a network error", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("NetworkError")));
+    const err = await sendChatMessage("Frage", "de").catch((e) => e);
+    expect(err).toBeInstanceOf(ChatError);
+    expect(err.kind).toBe("network");
   });
 });
 

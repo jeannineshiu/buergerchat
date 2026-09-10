@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { LANGUAGES } from "@/lib/constants";
-import { getStrings, RTL_LANGUAGES, UI_STRINGS } from "@/lib/i18n";
+import { ChatError } from "@/lib/api";
+import { errorText, getStrings, RTL_LANGUAGES, UI_STRINGS } from "@/lib/i18n";
 
 // TypeScript guarantees each locale object has every field; what it cannot
 // check is the cross-file invariant between the language selector and the
@@ -77,5 +78,27 @@ describe("i18n string table", () => {
   it("falls back to German for unknown codes", () => {
     expect(getStrings("xx")).toBe(UI_STRINGS.de);
     expect(getStrings("zh-Hant")).toBe(UI_STRINGS["zh-Hant"]);
+  });
+});
+
+describe("errorText", () => {
+  const de = UI_STRINGS.de;
+
+  it("picks the message matching the failure kind", () => {
+    expect(errorText(de, new ChatError("network"))).toBe(de.errorNetwork);
+    expect(errorText(de, new ChatError("rateLimit", 429))).toBe(de.errorRateLimit);
+    expect(errorText(de, new ChatError("server", 502))).toBe(de.errorServer);
+    expect(errorText(de, new ChatError("other", 422))).toBe(de.errorMessage);
+  });
+
+  it("falls back to the generic message for anything else", () => {
+    expect(errorText(de, new SyntaxError("bad JSON"))).toBe(de.errorMessage);
+  });
+
+  it("gives each failure kind its own text in every locale", () => {
+    for (const [code, s] of Object.entries(UI_STRINGS)) {
+      const texts = [s.errorMessage, s.errorNetwork, s.errorRateLimit, s.errorServer];
+      expect(new Set(texts).size, code).toBe(4);
+    }
   });
 });
