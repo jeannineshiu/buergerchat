@@ -33,6 +33,30 @@ EMBEDDING_MODEL = "text-embedding-3-small"
 CHAT_MODEL = os.environ.get("CHAT_MODEL", "gpt-5.5")
 TOP_K = 5
 
+# gpt-5.5 is a reasoning model, and at its default effort it thinks before
+# every call. Timed 2026-09-10 (3 queries, RERANK=1): the rerank call
+# (output: ~12 tokens of numbers) spent 512 reasoning tokens and 9-11 s,
+# the answer ~500 and 12-13 s — /chat took 21-27 s end to end. With "none"
+# the rerank takes ~1.4 s and the answer 5-7 s. Golden A/B, 19 items x
+# de/en/zh-Hant, default effort vs "none" for both: query() median
+# 14.7/14.9/20.3 s -> 5.6/4.8/7.5 s; retrieval 19/19 everywhere (one
+# zh-Hant run 18/19, two reruns 19/19 — translation noise); answer eval
+# de/en 19/19 both, zh-Hant 17 vs 16/19, where every failure in BOTH arms
+# is the model spelling a correct figure in Chinese numerals (五百六十三,
+# 百分之六十), which the digit-only fact check can't match. No offer
+# endings in either arm. The answer effort is separate from the helper
+# effort so it can be raised on its own. Accepted by gpt-5.5: none, low,
+# medium, high, xhigh ("minimal" is rejected). Set a variable to "" to
+# send no reasoning_effort at all (models that don't support it, e.g. a
+# non-reasoning CHAT_MODEL override).
+ANSWER_REASONING_EFFORT = os.environ.get("ANSWER_REASONING_EFFORT", "none")
+HELPER_REASONING_EFFORT = os.environ.get("HELPER_REASONING_EFFORT", "none")
+
+
+def reasoning_kwargs(effort: str) -> dict:
+    return {"reasoning_effort": effort} if effort else {}
+
+
 # Vector similarity alone cannot separate the answer from the noise on
 # amount questions: for "Wie hoch ist der Regelsatz beim Bürgergeld für
 # Alleinstehende?" the 30 nearest chunks span cosine 0.639..0.578, the top 5
@@ -266,6 +290,7 @@ class RAGPipeline:
         try:
             response = self.client.chat.completions.create(
                 model=CHAT_MODEL,
+                **reasoning_kwargs(HELPER_REASONING_EFFORT),
                 messages=[
                     {"role": "system", "content": TRANSLATE_PROMPT},
                     {"role": "user", "content": query},
@@ -291,6 +316,7 @@ class RAGPipeline:
         try:
             response = self.client.chat.completions.create(
                 model=RERANK_MODEL,
+                **reasoning_kwargs(HELPER_REASONING_EFFORT),
                 messages=[
                     {"role": "system", "content": RERANK_PROMPT.format(top_k=TOP_K)},
                     {"role": "user", "content": f"Frage: {query}\n\nAusschnitte:\n{listing}"},
@@ -433,7 +459,9 @@ class RAGPipeline:
             },
         ]
         completion = self.client.chat.completions.create(
-            model=CHAT_MODEL, messages=messages_payload
+            model=CHAT_MODEL,
+            messages=messages_payload,
+            **reasoning_kwargs(ANSWER_REASONING_EFFORT),
         )
         answer = completion.choices[0].message.content
 
@@ -444,6 +472,7 @@ class RAGPipeline:
             snippet = answer[max(0, leak.start() - 10) : leak.start() + 10]
             retry = self.client.chat.completions.create(
                 model=CHAT_MODEL,
+                **reasoning_kwargs(ANSWER_REASONING_EFFORT),
                 messages=messages_payload
                 + [
                     {"role": "assistant", "content": answer},

@@ -53,10 +53,13 @@ class FakeChatCompletions:
         # retrieve() can make two chat calls now (translation, rerank) before
         # the answer call, so tests need the whole sequence, not just the last.
         self.calls = []
+        # Extra SDK kwargs per call (e.g. reasoning_effort), same order as calls.
+        self.call_kwargs = []
 
-    def create(self, model, messages):
+    def create(self, model, messages, **kwargs):
         self.last_messages = messages
         self.calls.append(messages)
+        self.call_kwargs.append(kwargs)
         message = type("Msg", (), {"content": "STUB ANSWER"})()
         choice = type("Choice", (), {"message": message})()
         return type("Completion", (), {"choices": [choice]})()

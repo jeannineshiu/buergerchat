@@ -128,7 +128,7 @@ class TestQueryTranslation:
     def test_translation_failure_falls_back_to_original(self, pipeline):
         captured = self._capture_embed_inputs(pipeline)
 
-        def broken_create(model, messages):
+        def broken_create(model, messages, **kwargs):
             raise RuntimeError("api down")
 
         pipeline.client.chat.completions.create = broken_create
@@ -210,7 +210,7 @@ class TestQuery:
         answers = iter(["Kindergeld rückwirkend", "最多可ย้อนหลัง領 6 個月", "最多可追溯領 6 個月"])
         calls = []
 
-        def fake_create(model, messages):
+        def fake_create(model, messages, **kwargs):
             calls.append(messages)
             message = type("Msg", (), {"content": next(answers)})()
             choice = type("Choice", (), {"message": message})()
@@ -236,6 +236,55 @@ class TestQuery:
         pipeline.query("Wo ist mein Jobcenter?", authority_missing=True)
         prompt = pipeline.client.chat.completions.last_messages[-1]["content"]
         assert "ERFINDE KEINE" in prompt
+
+
+class TestReasoningEffort:
+    """gpt-5.5's default reasoning made /chat take 21-27 s; each call now
+    sends an explicit effort, split into helper calls and the answer."""
+
+    def _efforts(self, pipeline):
+        fake = pipeline.client.chat.completions
+        return [
+            (call[0]["content"][:12], kwargs.get("reasoning_effort", "<unset>"))
+            for call, kwargs in zip(fake.calls, fake.call_kwargs)
+        ]
+
+    def test_helper_and_answer_efforts_are_sent_separately(self, pipeline, monkeypatch):
+        monkeypatch.setattr(rag, "RERANK", True)
+        monkeypatch.setattr(rag, "HELPER_REASONING_EFFORT", "none")
+        monkeypatch.setattr(rag, "ANSWER_REASONING_EFFORT", "low")
+        pipeline.query("Kindergeld 可以補領嗎？", language="zh-Hant")
+        efforts = self._efforts(pipeline)
+        # translation, rerank, answer — in that order
+        assert [e for _, e in efforts] == ["none", "none", "low"]
+        assert efforts[0][0].startswith("Übersetze")
+        assert efforts[1][0].startswith("Du bewertest")
+
+    def test_empty_effort_sends_no_parameter(self, pipeline, monkeypatch):
+        # For a CHAT_MODEL override that doesn't accept reasoning_effort.
+        monkeypatch.setattr(rag, "HELPER_REASONING_EFFORT", "")
+        monkeypatch.setattr(rag, "ANSWER_REASONING_EFFORT", "")
+        pipeline.query("Kindergeld 可以補領嗎？", language="zh-Hant")
+        assert all(
+            "reasoning_effort" not in kwargs
+            for kwargs in pipeline.client.chat.completions.call_kwargs
+        )
+
+    def test_corrective_retry_uses_the_answer_effort(self, pipeline, monkeypatch):
+        monkeypatch.setattr(rag, "ANSWER_REASONING_EFFORT", "medium")
+        fake = pipeline.client.chat.completions
+        replies = iter(["補發 ย้อนหลัง", "補發"])
+        original = fake.create
+
+        def leaky_then_clean(model, messages, **kwargs):
+            completion = original(model=model, messages=messages, **kwargs)
+            completion.choices[0].message.content = next(replies)
+            return completion
+
+        fake.create = leaky_then_clean
+        # German: no translation call, so the only calls are answer + retry.
+        pipeline.query("Wie hoch ist das Kindergeld?", language="de")
+        assert [k.get("reasoning_effort") for k in fake.call_kwargs] == ["medium", "medium"]
 
 
 class TestHelpers:
@@ -274,7 +323,7 @@ class TestRerank:
     def _pick(self, pipeline, reply):
         """Force the reranker's answer and return the retrieved chunk ids."""
 
-        def fake_create(model, messages):
+        def fake_create(model, messages, **kwargs):
             message = type("Msg", (), {"content": reply})()
             return type("Completion", (), {"choices": [type("Choice", (), {"message": message})()]})()
 
@@ -321,7 +370,7 @@ class TestRerank:
         assert picked == vector_order + [seventh]
 
     def test_api_failure_falls_back_to_vector_order(self, pipeline):
-        def boom(model, messages):
+        def boom(model, messages, **kwargs):
             raise RuntimeError("rerank is down")
 
         vector_order = self._pick(pipeline, "")
