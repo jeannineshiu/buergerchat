@@ -44,8 +44,9 @@ TOP_K = 5
 # de/en 19/19 both, zh-Hant 17 vs 16/19, where every failure in BOTH arms
 # is the model spelling a correct figure in Chinese numerals (五百六十三,
 # 百分之六十), which the digit-only fact check can't match (since fixed by
-# the digits directive in query()). No offer endings in either arm. The answer effort is separate from the helper
-# effort so it can be raised on its own. Accepted by gpt-5.5: none, low,
+# the digits directive in query()). No offer endings in either arm. The
+# answer effort is separate from the helper effort so it can be raised on
+# its own. Accepted by gpt-5.5: none, low,
 # medium, high, xhigh ("minimal" is rejected). Set a variable to "" to
 # send no reasoning_effort at all (models that don't support it, e.g. a
 # non-reasoning CHAT_MODEL override).
