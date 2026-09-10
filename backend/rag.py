@@ -43,8 +43,8 @@ TOP_K = 5
 # zh-Hant run 18/19, two reruns 19/19 — translation noise); answer eval
 # de/en 19/19 both, zh-Hant 17 vs 16/19, where every failure in BOTH arms
 # is the model spelling a correct figure in Chinese numerals (五百六十三,
-# 百分之六十), which the digit-only fact check can't match. No offer
-# endings in either arm. The answer effort is separate from the helper
+# 百分之六十), which the digit-only fact check can't match (since fixed by
+# the digits directive in query()). No offer endings in either arm. The answer effort is separate from the helper
 # effort so it can be raised on its own. Accepted by gpt-5.5: none, low,
 # medium, high, xhigh ("minimal" is rejected). Set a variable to "" to
 # send no reasoning_effort at all (models that don't support it, e.g. a
@@ -412,6 +412,13 @@ class RAGPipeline:
             "'Tell me your postal code and I will name your Familienkasse.' "
             "Double-check before finishing: every word is either the answer "
             "language or an official German term — no other language.",
+            # zh answers spelled figures out ("五百六十三歐元", "百分之六十"):
+            # harder to read than digits, and people need to match them
+            # against their Bescheid.
+            "Write every number as digits — amounts, percentages, ages, years, "
+            "dates, durations (e.g. 563 €, 60 %, 67, 1964, 3 Monate). Never spell a "
+            "number out in words or as Chinese/Korean numerals (NOT 五百六十三, "
+            "百分之六十, 六十七歲). Arabic and Persian answers may use their own digits.",
         ]
         if chitchat:
             directives.append(

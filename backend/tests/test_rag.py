@@ -227,6 +227,12 @@ class TestQuery:
         answer, _ = pipeline.query("Bürgergeld", language="zh-Hant")
         assert answer == "STUB ANSWER"
 
+    def test_digits_directive_in_every_answer_prompt(self, pipeline):
+        for language in ("de", "zh-Hant"):
+            pipeline.query("Wie hoch ist das Kindergeld?", language=language)
+            prompt = pipeline.client.chat.completions.last_messages[-1]["content"]
+            assert "Write every number as digits" in prompt
+
     def test_ask_for_plz_directive_in_prompt(self, pipeline):
         pipeline.query("Wo ist mein Jobcenter?", ask_for_plz=True)
         prompt = pipeline.client.chat.completions.last_messages[-1]["content"]
