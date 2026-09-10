@@ -9,6 +9,7 @@ import { LanguageSelect } from "@/components/LanguageSelect";
 import { SessionFeedback } from "@/components/SessionFeedback";
 import { sendChatMessage } from "@/lib/api";
 import { getStrings, RTL_LANGUAGES } from "@/lib/i18n";
+import { loadLanguage, saveLanguage } from "@/lib/storage";
 
 function BrandMark() {
   return (
@@ -74,14 +75,14 @@ export default function Home() {
     // Reads localStorage (a client-only external system), so this can't
     // move into a useState lazy initializer without a server/client
     // hydration mismatch on the language-dependent text below.
-    const saved = localStorage.getItem("buergerchat-language");
+    const saved = loadLanguage();
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (saved) setLanguage(saved);
   }, []);
 
   function changeLanguage(code: string) {
     setLanguage(code);
-    localStorage.setItem("buergerchat-language", code);
+    saveLanguage(code);
   }
 
   // Whole-page direction and lang follow the selected language (ar/fa = RTL).
