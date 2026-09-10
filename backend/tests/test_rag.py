@@ -293,6 +293,21 @@ class TestReasoningEffort:
         assert [k.get("reasoning_effort") for k in fake.call_kwargs] == ["medium", "medium"]
 
 
+class TestUsageReporting:
+    def test_every_openai_response_is_reported(self, pipeline, monkeypatch):
+        monkeypatch.setattr(rag, "RERANK", True)
+        reported = []
+        pipeline._on_usage = lambda model, usage: reported.append(model)
+        pipeline.query("Kindergeld 可以補領嗎？", language="zh-Hant")
+        # translation, embedding, rerank, answer
+        assert reported == [rag.CHAT_MODEL, rag.EMBEDDING_MODEL, rag.RERANK_MODEL, rag.CHAT_MODEL]
+
+    def test_no_callback_is_fine(self, pipeline):
+        pipeline._on_usage = None
+        answer, _ = pipeline.query("Wie hoch ist das Kindergeld?")
+        assert answer == "STUB ANSWER"
+
+
 class TestHelpers:
     def test_language_directive_german_is_plain(self):
         assert language_directive("de") == "Antworte auf Deutsch."

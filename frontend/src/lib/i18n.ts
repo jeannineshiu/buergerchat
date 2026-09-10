@@ -22,6 +22,7 @@ export interface UIStrings {
   errorNetwork: string;
   errorRateLimit: string;
   errorServer: string;
+  errorDailyLimit: string;
   disclaimer: string;
   sources: string;
   buergergeldNotice: string;
@@ -53,6 +54,7 @@ const de: UIStrings = {
   errorNetwork: "Keine Verbindung zum Server. Bitte prüfen Sie Ihre Internetverbindung und versuchen Sie es erneut.",
   errorRateLimit: "Zu viele Fragen in kurzer Zeit. Bitte warten Sie eine Minute und versuchen Sie es dann erneut.",
   errorServer: "Der Dienst hat gerade ein Problem. Bitte versuchen Sie es in ein paar Minuten erneut.",
+  errorDailyLimit: "Das Tageslimit für Fragen ist erreicht. Bitte versuchen Sie es morgen wieder.",
   disclaimer: "BürgerChat erklärt amtliche Informationen, ersetzt aber keine Rechtsberatung.",
   sources: "Quellen",
   buergergeldNotice:
@@ -119,6 +121,7 @@ const en: UIStrings = {
   errorNetwork: "Can't reach the server. Please check your internet connection and try again.",
   errorRateLimit: "Too many questions in a short time. Please wait a minute and try again.",
   errorServer: "The service is having a problem right now. Please try again in a few minutes.",
+  errorDailyLimit: "The daily limit for questions has been reached. Please try again tomorrow.",
   disclaimer: "BürgerChat explains official information; it is not legal advice.",
   sources: "Sources",
   buergergeldNotice:
@@ -185,6 +188,7 @@ const tr: UIStrings = {
   errorNetwork: "Sunucuya bağlanılamadı. Lütfen internet bağlantınızı kontrol edip tekrar deneyin.",
   errorRateLimit: "Kısa sürede çok fazla soru soruldu. Lütfen bir dakika bekleyip tekrar deneyin.",
   errorServer: "Hizmette şu anda bir sorun var. Lütfen birkaç dakika sonra tekrar deneyin.",
+  errorDailyLimit: "Günlük soru sınırına ulaşıldı. Lütfen yarın tekrar deneyin.",
   disclaimer: "BürgerChat resmi bilgileri açıklar; hukuki danışmanlık yerine geçmez.",
   sources: "Kaynaklar",
   buergergeldNotice:
@@ -251,6 +255,7 @@ const ar: UIStrings = {
   errorNetwork: "تعذّر الاتصال بالخادم. يرجى التحقق من اتصالك بالإنترنت والمحاولة مرة أخرى.",
   errorRateLimit: "عدد كبير من الأسئلة في وقت قصير. يرجى الانتظار دقيقة ثم المحاولة مرة أخرى.",
   errorServer: "تواجه الخدمة مشكلة حاليًا. يرجى المحاولة مرة أخرى بعد بضع دقائق.",
+  errorDailyLimit: "تم الوصول إلى الحد اليومي للأسئلة. يرجى المحاولة مرة أخرى غدًا.",
   disclaimer: "يشرح BürgerChat المعلومات الرسمية، وهو ليس استشارة قانونية.",
   sources: "المصادر",
   buergergeldNotice:
@@ -317,6 +322,7 @@ const fa: UIStrings = {
   errorNetwork: "اتصال به سرور برقرار نشد. لطفاً اتصال اینترنت خود را بررسی کنید و دوباره تلاش کنید.",
   errorRateLimit: "در زمان کوتاهی پرسش‌های زیادی فرستاده شد. لطفاً یک دقیقه صبر کنید و دوباره تلاش کنید.",
   errorServer: "سرویس در حال حاضر با مشکل روبه‌رو است. لطفاً چند دقیقه دیگر دوباره تلاش کنید.",
+  errorDailyLimit: "سقف روزانه پرسش‌ها پر شده است. لطفاً فردا دوباره تلاش کنید.",
   disclaimer: "BürgerChat اطلاعات رسمی را توضیح می‌دهد و جایگزین مشاوره حقوقی نیست.",
   sources: "منابع",
   buergergeldNotice:
@@ -383,6 +389,7 @@ const uk: UIStrings = {
   errorNetwork: "Немає з'єднання з сервером. Перевірте підключення до інтернету і спробуйте ще раз.",
   errorRateLimit: "Забагато запитань за короткий час. Зачекайте хвилину і спробуйте ще раз.",
   errorServer: "Сервіс зараз працює з помилками. Спробуйте ще раз за кілька хвилин.",
+  errorDailyLimit: "Денний ліміт запитань вичерпано. Спробуйте ще раз завтра.",
   disclaimer: "BürgerChat пояснює офіційну інформацію і не замінює юридичну консультацію.",
   sources: "Джерела",
   buergergeldNotice:
@@ -449,6 +456,7 @@ const ru: UIStrings = {
   errorNetwork: "Нет соединения с сервером. Проверьте подключение к интернету и попробуйте ещё раз.",
   errorRateLimit: "Слишком много вопросов за короткое время. Подождите минуту и попробуйте ещё раз.",
   errorServer: "Сервис сейчас работает с ошибками. Попробуйте ещё раз через несколько минут.",
+  errorDailyLimit: "Дневной лимит вопросов исчерпан. Попробуйте ещё раз завтра.",
   disclaimer: "BürgerChat объясняет официальную информацию и не заменяет юридическую консультацию.",
   sources: "Источники",
   buergergeldNotice:
@@ -515,6 +523,7 @@ const pl: UIStrings = {
   errorNetwork: "Brak połączenia z serwerem. Sprawdź połączenie z internetem i spróbuj ponownie.",
   errorRateLimit: "Zbyt wiele pytań w krótkim czasie. Odczekaj minutę i spróbuj ponownie.",
   errorServer: "Usługa ma teraz problem. Spróbuj ponownie za kilka minut.",
+  errorDailyLimit: "Dzienny limit pytań został wyczerpany. Spróbuj ponownie jutro.",
   disclaimer: "BürgerChat objaśnia oficjalne informacje i nie zastępuje porady prawnej.",
   sources: "Źródła",
   buergergeldNotice:
@@ -581,6 +590,7 @@ const zhHant: UIStrings = {
   errorNetwork: "無法連線到伺服器，請檢查網路連線後再試一次。",
   errorRateLimit: "短時間內提問次數過多，請稍候一分鐘再試。",
   errorServer: "服務暫時出現問題，請幾分鐘後再試一次。",
+  errorDailyLimit: "今日提問次數已達上限，請明天再試。",
   disclaimer: "BürgerChat 解釋官方資訊，不能取代法律諮詢。",
   sources: "來源",
   buergergeldNotice:
@@ -647,6 +657,7 @@ const zhHans: UIStrings = {
   errorNetwork: "无法连接到服务器，请检查网络连接后再试一次。",
   errorRateLimit: "短时间内提问次数过多，请等待一分钟后再试。",
   errorServer: "服务暂时出现问题，请几分钟后再试一次。",
+  errorDailyLimit: "今日提问次数已达上限，请明天再试。",
   disclaimer: "BürgerChat 解释官方信息，不能取代法律咨询。",
   sources: "来源",
   buergergeldNotice:
@@ -713,6 +724,7 @@ const vi: UIStrings = {
   errorNetwork: "Không thể kết nối tới máy chủ. Vui lòng kiểm tra kết nối internet và thử lại.",
   errorRateLimit: "Bạn đã hỏi quá nhiều trong thời gian ngắn. Vui lòng đợi một phút rồi thử lại.",
   errorServer: "Dịch vụ đang gặp sự cố. Vui lòng thử lại sau vài phút.",
+  errorDailyLimit: "Đã đạt giới hạn câu hỏi trong ngày. Vui lòng thử lại vào ngày mai.",
   disclaimer: "BürgerChat giải thích thông tin chính thức, không thay thế tư vấn pháp lý.",
   sources: "Nguồn",
   buergergeldNotice:
@@ -779,6 +791,7 @@ const id: UIStrings = {
   errorNetwork: "Tidak dapat terhubung ke server. Silakan periksa koneksi internet Anda dan coba lagi.",
   errorRateLimit: "Terlalu banyak pertanyaan dalam waktu singkat. Silakan tunggu satu menit lalu coba lagi.",
   errorServer: "Layanan sedang bermasalah. Silakan coba lagi dalam beberapa menit.",
+  errorDailyLimit: "Batas pertanyaan harian telah tercapai. Silakan coba lagi besok.",
   disclaimer: "BürgerChat menjelaskan informasi resmi dan bukan nasihat hukum.",
   sources: "Sumber",
   buergergeldNotice:
@@ -845,6 +858,7 @@ const ko: UIStrings = {
   errorNetwork: "서버에 연결할 수 없습니다. 인터넷 연결을 확인한 후 다시 시도해 주세요.",
   errorRateLimit: "짧은 시간에 질문이 너무 많습니다. 1분 후에 다시 시도해 주세요.",
   errorServer: "서비스에 일시적인 문제가 있습니다. 몇 분 후에 다시 시도해 주세요.",
+  errorDailyLimit: "오늘의 질문 한도에 도달했습니다. 내일 다시 시도해 주세요.",
   disclaimer: "BürgerChat은 공식 정보를 설명하며 법률 자문을 대신하지 않습니다.",
   sources: "출처",
   buergergeldNotice:
@@ -928,6 +942,8 @@ export function errorText(strings: UIStrings, err: unknown): string {
       return strings.errorNetwork;
     case "rateLimit":
       return strings.errorRateLimit;
+    case "dailyLimit":
+      return strings.errorDailyLimit;
     case "server":
       return strings.errorServer;
     default:

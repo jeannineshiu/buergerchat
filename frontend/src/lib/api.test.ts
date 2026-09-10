@@ -63,6 +63,34 @@ describe("sendChatMessage", () => {
     await expect(sendChatMessage("Frage", "de")).rejects.toMatchObject({ kind, status });
   });
 
+  it.each([
+    [429, "daily_limit"],
+    [503, "daily_budget_exhausted"],
+  ] as const)("classifies HTTP %i with code %s as the daily limit", async (status, code) => {
+    mockFetch(status, { error: "x", code });
+    await expect(sendChatMessage("Frage", "de")).rejects.toMatchObject({
+      kind: "dailyLimit",
+      status,
+    });
+  });
+
+  it("keeps the per-minute 429 as rateLimit", async () => {
+    mockFetch(429, { error: "x", code: "rate_limit" });
+    await expect(sendChatMessage("Frage", "de")).rejects.toMatchObject({ kind: "rateLimit" });
+  });
+
+  it("falls back to the status when the error body is not JSON", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 502,
+        json: () => Promise.reject(new SyntaxError("Unexpected token <")),
+      }),
+    );
+    await expect(sendChatMessage("Frage", "de")).rejects.toMatchObject({ kind: "server" });
+  });
+
   it("classifies a fetch that never got a response as a network error", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("NetworkError")));
     const err = await sendChatMessage("Frage", "de").catch((e) => e);

@@ -48,6 +48,12 @@ describe("proxyToBackend", () => {
     expect(Object.keys(fetchMock.mock.calls[0][1].headers).sort()).toEqual(["content-type"]);
   });
 
+  it("passes Cache-Control on, so the smoke test can bypass the answer cache", async () => {
+    const fetchMock = upstream();
+    await proxyToBackend(post("{}", { "cache-control": "no-cache" }), "chat", BASE, fetchMock);
+    expect(fetchMock.mock.calls[0][1].headers["cache-control"]).toBe("no-cache");
+  });
+
   it("passes backend error statuses through unchanged", async () => {
     const res = await proxyToBackend(
       post("{}"),

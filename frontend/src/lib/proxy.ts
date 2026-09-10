@@ -48,6 +48,10 @@ export async function proxyToBackend(
   // frontend server's IP and a single 10/min bucket.
   const forwardedFor = request.headers.get("x-forwarded-for");
   if (forwardedFor) headers["x-forwarded-for"] = forwardedFor;
+  // "no-cache" makes the backend skip its first-turn answer cache — the
+  // smoke test relies on it to reach the LLM through this proxy.
+  const cacheControl = request.headers.get("cache-control");
+  if (cacheControl) headers["cache-control"] = cacheControl;
 
   let upstream: Response;
   try {

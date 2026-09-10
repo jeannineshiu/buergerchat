@@ -20,7 +20,11 @@ const API_URL = "/api";
 // Why a request failed, so the UI can say something more useful than
 // "it failed". Picked from the status code; "network" means no response at
 // all (offline, or the connection dropped).
-export type ChatErrorKind = "network" | "rateLimit" | "server" | "other";
+export type ChatErrorKind = "network" | "rateLimit" | "dailyLimit" | "server" | "other";
+
+// Backend error codes meaning "come back tomorrow": this visitor's daily
+// question limit (429) or the service-wide daily budget (503).
+const DAILY_CODES = new Set(["daily_limit", "daily_budget_exhausted"]);
 
 export class ChatError extends Error {
   constructor(
@@ -55,7 +59,14 @@ export async function sendChatMessage(
   }
 
   if (!response.ok) {
-    throw new ChatError(kindForStatus(response.status), response.status);
+    let code: unknown;
+    try {
+      code = (await response.json())?.code;
+    } catch {
+      // Not JSON (e.g. an HTML error page) — the status decides alone.
+    }
+    const kind = DAILY_CODES.has(String(code)) ? "dailyLimit" : kindForStatus(response.status);
+    throw new ChatError(kind, response.status);
   }
 
   return response.json();

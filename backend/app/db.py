@@ -39,6 +39,19 @@ def resolve_feedback_database_url() -> str:
     return url
 
 
+def resolve_usage_database_url() -> str:
+    """Daily OpenAI spend (budget.py). Own file for the same reason as
+    feedback.db: the index upload must never reset the day's spend."""
+    data_dir = os.environ.get("DATA_DIR", "data")
+    url = os.environ.get("USAGE_DATABASE_URL", f"{SQLITE_PREFIX}{data_dir}/usage.db")
+    if url.startswith(SQLITE_PREFIX):
+        raw_path = url[len(SQLITE_PREFIX):]
+        abs_path = (REPO_ROOT / raw_path).resolve()
+        abs_path.parent.mkdir(parents=True, exist_ok=True)
+        url = f"{SQLITE_PREFIX}{abs_path}"
+    return url
+
+
 engine = create_engine(resolve_database_url())
 SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
@@ -46,3 +59,5 @@ Base = declarative_base()
 feedback_engine = create_engine(resolve_feedback_database_url())
 FeedbackSessionLocal = sessionmaker(bind=feedback_engine)
 FeedbackBase = declarative_base()
+
+usage_engine = create_engine(resolve_usage_database_url())

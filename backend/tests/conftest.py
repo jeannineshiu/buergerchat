@@ -21,6 +21,9 @@ os.environ["OPENAI_API_KEY"] = "test-key-not-used"
 os.environ["FAISS_INDEX_PATH"] = ""  # falsy → rag falls back to DATA_DIR
 os.environ["DATABASE_URL"] = f"sqlite:///{_TEST_DATA_DIR}/metadata.db"
 os.environ["FEEDBACK_DATABASE_URL"] = f"sqlite:///{_TEST_DATA_DIR}/feedback.db"
+os.environ["USAGE_DATABASE_URL"] = f"sqlite:///{_TEST_DATA_DIR}/usage.db"
+os.environ["DAILY_BUDGET_USD"] = "0.50"
+os.environ["CHAT_DAILY_LIMIT"] = "30"
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 

@@ -22,8 +22,9 @@ Stdlib only, no dependencies: it runs from a bare GitHub Actions runner
 
 Exit code 0 = healthy, 1 = something is broken (details on stderr).
 Each run costs a couple of OpenAI calls per query — with RERANK=1 that is
-one rerank plus one answer completion — so keep the query list short and
-the cron interval sane.
+one rerank plus one answer completion, about $0.05 per query — and counts
+against the backend's DAILY_BUDGET_USD like any visitor, so keep the query
+list short and the cron interval sane (once a day: ~$0.10 of a $0.50 day).
 """
 
 import argparse
@@ -61,6 +62,9 @@ def _request(url, *, payload=None, timeout=30):
     """Return (status, parsed_body). Raises SmokeFailure on transport errors."""
     data = json.dumps(payload).encode() if payload is not None else None
     headers = {"Content-Type": "application/json"} if data else {}
+    # Skip the backend's first-turn answer cache: a cached answer would
+    # hide exactly the LLM failures this script exists to catch.
+    headers["Cache-Control"] = "no-cache"
     request = urllib.request.Request(url, data=data, headers=headers)
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
@@ -74,7 +78,9 @@ def _request(url, *, payload=None, timeout=30):
         body = exc.read().decode(errors="replace")[:500]
         # 502/504 come from the frontend proxy (backend unreachable / timed
         # out); other 5xx from the backend itself.
-        if exc.code in (502, 504):
+        if exc.code in (429, 503) and "daily_" in body:
+            hint = " (daily limit reached — see DAILY_BUDGET_USD / CHAT_DAILY_LIMIT)"
+        elif exc.code in (502, 504):
             hint = " (proxy: check BACKEND_URL / `railway logs -s profound-balance`)"
         elif exc.code >= 500:
             hint = " (see `railway logs -s buergerchat`)"

@@ -88,6 +88,7 @@ describe("errorText", () => {
     expect(errorText(de, new ChatError("network"))).toBe(de.errorNetwork);
     expect(errorText(de, new ChatError("rateLimit", 429))).toBe(de.errorRateLimit);
     expect(errorText(de, new ChatError("server", 502))).toBe(de.errorServer);
+    expect(errorText(de, new ChatError("dailyLimit", 503))).toBe(de.errorDailyLimit);
     expect(errorText(de, new ChatError("other", 422))).toBe(de.errorMessage);
   });
 
@@ -97,8 +98,14 @@ describe("errorText", () => {
 
   it("gives each failure kind its own text in every locale", () => {
     for (const [code, s] of Object.entries(UI_STRINGS)) {
-      const texts = [s.errorMessage, s.errorNetwork, s.errorRateLimit, s.errorServer];
-      expect(new Set(texts).size, code).toBe(4);
+      const texts = [
+        s.errorMessage,
+        s.errorNetwork,
+        s.errorRateLimit,
+        s.errorServer,
+        s.errorDailyLimit,
+      ];
+      expect(new Set(texts).size, code).toBe(5);
     }
   });
 });

@@ -14,7 +14,9 @@ name: smoke-test
 
 on:
   schedule:
-    - cron: "17 */6 * * *" # every 6 hours, off the hour to dodge the cron rush
+    # Once a day: each run costs ~$0.10 of the backend's $0.50/day budget
+    # (DAILY_BUDGET_USD); every 6 hours ate 80% of it.
+    - cron: "17 6 * * *" # 06:17 UTC, off the hour to dodge the cron rush
   workflow_dispatch:
 
 jobs:

@@ -256,8 +256,12 @@ class IndexNotReadyError(Exception):
 
 
 class RAGPipeline:
-    def __init__(self):
+    def __init__(self, on_usage=None):
         self.client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+        # on_usage(model, usage) is called after every OpenAI response —
+        # main.py passes the daily budget's recorder; evals pass nothing, so
+        # local runs never count against production's cap.
+        self._on_usage = on_usage
         # Lazy: the index is loaded on first use (or explicit load()), not at
         # import time, so the app can start before the volume is populated.
         self.index = None
@@ -284,12 +288,20 @@ class RAGPipeline:
         if not self.load():
             raise IndexNotReadyError(str(resolve_faiss_path()))
 
+    def _track(self, model: str, response):
+        if self._on_usage is not None:
+            self._on_usage(model, getattr(response, "usage", None))
+        return response
+
+    def _chat(self, **kwargs):
+        return self._track(kwargs["model"], self.client.chat.completions.create(**kwargs))
+
     def _query_to_german(self, query: str) -> str:
         """Translate a non-Latin-script query to German for retrieval.
         Any failure falls back to the original query — retrieval quality
         degrades, but /chat keeps working."""
         try:
-            response = self.client.chat.completions.create(
+            response = self._chat(
                 model=CHAT_MODEL,
                 **reasoning_kwargs(HELPER_REASONING_EFFORT),
                 messages=[
@@ -315,7 +327,7 @@ class RAGPipeline:
             for n, chunk in enumerate(candidates, 1)
         )
         try:
-            response = self.client.chat.completions.create(
+            response = self._chat(
                 model=RERANK_MODEL,
                 **reasoning_kwargs(HELPER_REASONING_EFFORT),
                 messages=[
@@ -345,8 +357,9 @@ class RAGPipeline:
         self._ensure_loaded()
         if NON_LATIN_QUERY.search(query) or language not in ("de", "en"):
             query = self._query_to_german(query)
-        embed_response = self.client.embeddings.create(
-            model=EMBEDDING_MODEL, input=query
+        embed_response = self._track(
+            EMBEDDING_MODEL,
+            self.client.embeddings.create(model=EMBEDDING_MODEL, input=query),
         )
         query_vector = np.array([embed_response.data[0].embedding], dtype="float32")
         faiss.normalize_L2(query_vector)
@@ -466,7 +479,7 @@ class RAGPipeline:
                 + "\n".join(directives),
             },
         ]
-        completion = self.client.chat.completions.create(
+        completion = self._chat(
             model=CHAT_MODEL,
             messages=messages_payload,
             **reasoning_kwargs(ANSWER_REASONING_EFFORT),
@@ -478,7 +491,7 @@ class RAGPipeline:
             # One corrective retry; if the model leaks again, ship the retry
             # anyway — a rare stray word beats an error.
             snippet = answer[max(0, leak.start() - 10) : leak.start() + 10]
-            retry = self.client.chat.completions.create(
+            retry = self._chat(
                 model=CHAT_MODEL,
                 **reasoning_kwargs(ANSWER_REASONING_EFFORT),
                 messages=messages_payload

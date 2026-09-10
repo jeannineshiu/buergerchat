@@ -14,13 +14,17 @@ from rag import IndexNotReadyError
 @pytest.fixture()
 def client(monkeypatch):
     main.limiter.enabled = False
+    # Module-level cache: without this, a question asked in one test would
+    # be answered from the cache in the next and never reach fake_query.
+    main.answer_cache.clear()
 
-    calls = {}
+    calls = {"query_count": 0}
 
     def fake_query(message, language="de", topic=None, authority=None,
                    ask_for_plz=False, ask_for_topic=False, authority_missing=False,
                    history=None, meta_only=False, chitchat=False,
                    retrieval_query=None):
+        calls["query_count"] += 1
         calls["query"] = {
             "message": message, "language": language, "topic": topic,
             "authority": authority, "ask_for_plz": ask_for_plz,
@@ -181,6 +185,97 @@ class TestRateLimit:
         finally:
             main.limiter.enabled = False
         assert other.status_code == 200
+
+    def test_minute_limit_says_rate_limit(self, client):
+        main.limiter.enabled = True
+        try:
+            for _ in range(10):
+                client.post("/chat", json={"message": "Hallo"},
+                            headers={"X-Forwarded-For": "203.0.113.10"})
+            r = client.post("/chat", json={"message": "Hallo"},
+                            headers={"X-Forwarded-For": "203.0.113.10"})
+        finally:
+            main.limiter.enabled = False
+        assert r.status_code == 429
+        assert r.json()["code"] == "rate_limit"
+
+    def test_daily_limit_says_come_back_tomorrow(self, client, monkeypatch):
+        # Step a fake clock past each minute window so only the daily
+        # counter (CHAT_DAILY_LIMIT=30 in conftest) can trip.
+        import limits.storage.memory as memory
+
+        now = [memory.time.time()]
+        monkeypatch.setattr(memory.time, "time", lambda: now[0])
+        main.limiter.enabled = True
+        try:
+            statuses = []
+            for _ in range(3):
+                for _ in range(10):
+                    statuses.append(client.post(
+                        "/chat", json={"message": "Hallo"},
+                        headers={"X-Forwarded-For": "203.0.113.11"}).status_code)
+                now[0] += 61
+            r = client.post("/chat", json={"message": "Hallo"},
+                            headers={"X-Forwarded-For": "203.0.113.11"})
+        finally:
+            main.limiter.enabled = False
+        assert statuses == [200] * 30
+        assert r.status_code == 429
+        assert r.json()["code"] == "daily_limit"
+
+
+class TestAnswerCache:
+    def test_repeated_first_question_is_answered_from_cache(self, client):
+        first = client.post("/chat", json={"message": "Was ist Bürgergeld?"})
+        second = client.post("/chat", json={"message": " Was ist  Bürgergeld? "})
+        assert second.json() == first.json()
+        assert client.calls["query_count"] == 1
+
+    def test_language_is_part_of_the_key(self, client):
+        client.post("/chat", json={"message": "Was ist Bürgergeld?", "language": "de"})
+        client.post("/chat", json={"message": "Was ist Bürgergeld?", "language": "en"})
+        assert client.calls["query_count"] == 2
+
+    def test_turns_with_history_are_never_cached(self, client):
+        history = [
+            {"role": "user", "content": "Wer bekommt Kindergeld?"},
+            {"role": "assistant", "content": "Eltern …"},
+        ]
+        for _ in range(2):
+            client.post("/chat", json={"message": "Und wie viel?", "history": history})
+        assert client.calls["query_count"] == 2
+
+    def test_no_cache_header_reaches_the_pipeline(self, client):
+        client.post("/chat", json={"message": "Was ist Bürgergeld?"})
+        client.post("/chat", json={"message": "Was ist Bürgergeld?"},
+                    headers={"Cache-Control": "no-cache"})
+        assert client.calls["query_count"] == 2
+
+    def test_errors_are_not_cached(self, client, monkeypatch):
+        def raising_query(*args, **kwargs):
+            raise IndexNotReadyError("missing")
+
+        original = main.rag_pipeline.query
+        monkeypatch.setattr(main.rag_pipeline, "query", raising_query)
+        assert client.post("/chat", json={"message": "Was ist Bürgergeld?"}).status_code == 503
+        monkeypatch.setattr(main.rag_pipeline, "query", original)
+        assert client.post("/chat", json={"message": "Was ist Bürgergeld?"}).status_code == 200
+
+
+class TestDailyBudget:
+    def test_exhausted_budget_returns_503_with_code(self, client, monkeypatch):
+        monkeypatch.setattr(main.daily_budget, "exhausted", lambda: True)
+        r = client.post("/chat", json={"message": "Was ist Bürgergeld?"})
+        assert r.status_code == 503
+        assert r.json()["code"] == "daily_budget_exhausted"
+        assert client.calls["query_count"] == 0
+
+    def test_cached_answers_still_served_when_exhausted(self, client, monkeypatch):
+        client.post("/chat", json={"message": "Was ist Bürgergeld?"})
+        monkeypatch.setattr(main.daily_budget, "exhausted", lambda: True)
+        r = client.post("/chat", json={"message": "Was ist Bürgergeld?"})
+        assert r.status_code == 200
+        assert client.calls["query_count"] == 1
 
 
 class TestFeedback:

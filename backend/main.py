@@ -15,9 +15,11 @@ from pydantic import BaseModel, Field
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
-from app.db import FeedbackSessionLocal, FeedbackBase, feedback_engine
+from answer_cache import AnswerCache, cache_key
+from app.db import FeedbackSessionLocal, FeedbackBase, feedback_engine, usage_engine
 from app.models import FeedbackMessage, FeedbackSession
 from behoerde import BehoerdeFinder
+from budget import DailyBudget
 from rag import IndexNotReadyError, RAGPipeline
 from router import DEFAULT_TOPIC, QueryRouter
 
@@ -54,13 +56,34 @@ if not RATELIMIT_STORAGE_URI and os.environ.get("FRONTEND_ORIGIN"):
     )
 limiter = Limiter(key_func=client_ip, storage_uri=RATELIMIT_STORAGE_URI)
 
+# Per minute stops bursts; per day stops one person (or script) from
+# spending the whole daily budget alone — 10/minute alone allowed 14,400
+# questions a day per IP. In-memory counts reset on redeploy.
+CHAT_DAILY_LIMIT = int(os.environ.get("CHAT_DAILY_LIMIT", "30"))
+CHAT_RATE_LIMIT = f"10/minute;{CHAT_DAILY_LIMIT}/day"
+
 app = FastAPI(
     title="buergerchat API",
     description="RAG chatbot backend for German government services",
     version="0.1.0",
 )
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+@app.exception_handler(RateLimitExceeded)
+def rate_limit_exceeded(request: Request, exc: RateLimitExceeded):
+    # The frontend tells "wait a minute" apart from "come back tomorrow"
+    # by this code — slowapi's default body only carries a prose detail.
+    daily = exc.limit.limit.GRANULARITY.name == "day"
+    response = _rate_limit_exceeded_handler(request, exc)
+    return JSONResponse(
+        status_code=429,
+        content={
+            "error": f"Rate limit exceeded: {exc.detail}",
+            "code": "daily_limit" if daily else "rate_limit",
+        },
+        headers=dict(response.headers),
+    )
 
 # In production, FRONTEND_ORIGIN carries the deployed frontend's origin
 # (e.g. https://frontend-….up.railway.app).
@@ -74,8 +97,16 @@ app.add_middleware(
 )
 
 query_router = QueryRouter()
-rag_pipeline = RAGPipeline()
+# Every OpenAI response /chat triggers is costed into today's total; see
+# budget.py. DAILY_BUDGET_USD (default 0.50, "off" disables) caps it.
+daily_budget = DailyBudget.from_env(usage_engine)
+rag_pipeline = RAGPipeline(on_usage=daily_budget.record)
 behoerde_finder = BehoerdeFinder()
+answer_cache = AnswerCache()
+
+
+class DailyBudgetExhausted(Exception):
+    """Today's OpenAI spend reached DAILY_BUDGET_USD."""
 
 
 class Source(BaseModel):
@@ -102,6 +133,17 @@ class ChatResponse(BaseModel):
     topic: str
 
 
+@app.exception_handler(DailyBudgetExhausted)
+def daily_budget_exhausted(request, exc):
+    return JSONResponse(
+        status_code=503,
+        content={
+            "error": "Daily usage limit reached. Please try again tomorrow.",
+            "code": "daily_budget_exhausted",
+        },
+    )
+
+
 @app.exception_handler(IndexNotReadyError)
 def index_not_ready(request, exc):
     return JSONResponse(
@@ -111,8 +153,30 @@ def index_not_ready(request, exc):
 
 
 @app.post("/chat", response_model=ChatResponse)
-@limiter.limit("10/minute")
+@limiter.limit(CHAT_RATE_LIMIT)
 def chat(request: Request, chat_request: ChatRequest) -> ChatResponse:
+    # First turns are cached (answer_cache.py): the starter prompts arrive
+    # again and again and cost nothing on a hit — even after the daily
+    # budget is used up. "Cache-Control: no-cache" skips the lookup; the
+    # smoke test sends it because it must reach the LLM to mean anything.
+    first_turn = not chat_request.history
+    key = cache_key(chat_request.message, chat_request.language)
+    skip_lookup = "no-cache" in request.headers.get("cache-control", "").lower()
+    if first_turn and not skip_lookup:
+        cached = answer_cache.get(key)
+        if cached is not None:
+            return cached
+
+    if daily_budget.exhausted():
+        raise DailyBudgetExhausted()
+
+    response = answer_question(chat_request)
+    if first_turn:
+        answer_cache.put(key, response)
+    return response
+
+
+def answer_question(chat_request: ChatRequest) -> ChatResponse:
     # Intent, topic and PLZ may be split across turns ("Wo ist mein
     # Jobcenter?" → bot asks for PLZ → "10115"), so fall back to the
     # user's history for whatever the new message doesn't contain.
