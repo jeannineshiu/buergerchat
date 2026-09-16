@@ -11,6 +11,15 @@ from behoerde import BehoerdeResult
 from rag import IndexNotReadyError
 
 
+# What the stubbed query translation makes of non-German messages.
+TRANSLATIONS = {
+    "住房補助要去哪裡申請？10115": "Wo kann ich Wohngeld beantragen? 10115",
+    "住房補助要去哪裡申請？": "Wo kann ich Wohngeld beantragen?",
+    "兒童金可以補領嗎？": "Kann man Kindergeld nachträglich bekommen?",
+    "Where do I get housing benefit? 10115": "Wo bekomme ich Wohngeld? 10115",
+}
+
+
 @pytest.fixture()
 def client(monkeypatch):
     main.limiter.enabled = False
@@ -23,7 +32,7 @@ def client(monkeypatch):
     def fake_query(message, language="de", topic=None, authority=None,
                    ask_for_plz=False, ask_for_topic=False, authority_missing=False,
                    history=None, meta_only=False, chitchat=False,
-                   retrieval_query=None):
+                   retrieval_query=None, query_de=None):
         calls["query_count"] += 1
         calls["query"] = {
             "message": message, "language": language, "topic": topic,
@@ -31,6 +40,7 @@ def client(monkeypatch):
             "ask_for_topic": ask_for_topic,
             "authority_missing": authority_missing, "meta_only": meta_only,
             "chitchat": chitchat, "retrieval_query": retrieval_query,
+            "query_de": query_de,
         }
         sources = [{"title": "Doc", "url": "https://example.org"}]
         if authority is not None:
@@ -44,7 +54,12 @@ def client(monkeypatch):
         return BehoerdeResult(authority_name="Jobcenter Test", service_name="X",
                               website="https://jc.example")
 
+    def fake_to_german(text, language="de"):
+        calls.setdefault("translated", []).append(text)
+        return TRANSLATIONS.get(text, text)
+
     monkeypatch.setattr(main.rag_pipeline, "query", fake_query)
+    monkeypatch.setattr(main.rag_pipeline, "to_german", fake_to_german)
     monkeypatch.setattr(main.behoerde_finder, "find", fake_find)
     test_client = TestClient(main.app)
     test_client.calls = calls
@@ -114,6 +129,49 @@ class TestChat:
         assert client.calls["query"]["topic"] == "allgemein"
         assert client.calls["query"]["ask_for_topic"] is True
         assert client.calls["query"]["authority_missing"] is False
+
+    def test_non_german_authority_question_routes_on_translation(self, client):
+        # No Chinese keywords exist — the German translation carries both
+        # the topic and the where-to-apply intent.
+        r = client.post("/chat", json={"message": "住房補助要去哪裡申請？10115", "language": "zh-Hant"})
+        assert r.status_code == 200
+        assert r.json()["topic"] == "wohngeld"
+        assert client.calls["find"] == {
+            "plz": "10115", "query": "Wo kann ich Wohngeld beantragen? 10115", "topic": "wohngeld",
+        }
+        # retrieval reuses the translation instead of paying for it again
+        assert client.calls["query"]["query_de"] == "Wo kann ich Wohngeld beantragen? 10115"
+        assert client.calls["translated"] == ["住房補助要去哪裡申請？10115"]
+
+    def test_english_question_routes_on_translation(self, client):
+        # "housing benefit" is no topic keyword and "where do I get" no
+        # intent phrase — only the German translation carries both.
+        r = client.post("/chat", json={"message": "Where do I get housing benefit? 10115", "language": "en"})
+        assert r.json()["topic"] == "wohngeld"
+        assert client.calls["find"] == {
+            "plz": "10115", "query": "Wo bekomme ich Wohngeld? 10115", "topic": "wohngeld",
+        }
+
+    def test_non_german_authority_question_without_plz_asks_for_it(self, client):
+        client.post("/chat", json={"message": "住房補助要去哪裡申請？", "language": "zh-Hant"})
+        assert client.calls["query"]["ask_for_plz"] is True
+        assert "find" not in client.calls
+
+    def test_bare_plz_followup_to_non_german_question(self, client):
+        history = [
+            {"role": "user", "content": "住房補助要去哪裡申請？"},
+            {"role": "assistant", "content": "請告訴我您的郵遞區號。"},
+        ]
+        client.post("/chat", json={"message": "10115", "history": history, "language": "zh-Hant"})
+        assert client.calls["find"] == {
+            "plz": "10115", "query": "Wo kann ich Wohngeld beantragen?", "topic": "wohngeld",
+        }
+
+    def test_non_german_knowledge_question_does_not_trigger_lookup(self, client):
+        r = client.post("/chat", json={"message": "兒童金可以補領嗎？", "language": "zh-Hant"})
+        assert r.json()["topic"] == "kindergeld"
+        assert "find" not in client.calls
+        assert client.calls["query"]["ask_for_plz"] is False
 
     def test_meta_question_skips_retrieval_and_has_no_sources(self, client):
         r = client.post("/chat", json={"message": "Welche Fragen kann ich dir stellen?"})

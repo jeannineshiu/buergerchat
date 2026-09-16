@@ -48,6 +48,18 @@ class TestWantsAuthority:
         assert router.wants_authority("Gdzie jest moja właściwa Wohngeldstelle (urząd dodatku mieszkaniowego)?")
         assert router.wants_authority("Wo ist meine Agentur für Arbeit?")
 
+    def test_where_to_apply_with_words_in_between(self):
+        # What the query translation typically makes of a non-German
+        # "where do I apply for X?" — the fixed phrases missed it.
+        assert router.wants_authority("Wo kann ich Wohngeld beantragen?")
+        assert router.wants_authority("Wo muss ich mich arbeitslos melden?")
+        assert router.wants_authority("Where can I apply for child benefit?")
+        assert router.wants_authority("Wo bekomme ich einen Personalausweis?")
+
+    def test_how_to_apply_is_not_where_to_apply(self):
+        assert not router.wants_authority("Wie beantrage ich Wohngeld?")
+        assert not router.wants_authority("Wohngeld beantragen: welche Unterlagen?")
+
     def test_no_intent_on_knowledge_question(self):
         assert not router.wants_authority("Was ist Bürgergeld?")
         assert not router.wants_authority("Wie hoch ist das Kindergeld?")

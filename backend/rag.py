@@ -201,6 +201,8 @@ NON_LATIN_QUERY = re.compile(
     "가-힯]"   # Hangul
 )
 
+HAS_LETTERS = re.compile(r"[^\W\d_]")
+
 TRANSLATE_PROMPT = (
     "Übersetze die folgende Nutzerfrage zu deutschen Behörden und "
     "Sozialleistungen ins Deutsche, für eine Dokumentensuche. Amtliche "
@@ -296,6 +298,21 @@ class RAGPipeline:
     def _chat(self, **kwargs):
         return self._track(kwargs["model"], self.client.chat.completions.create(**kwargs))
 
+    def to_german(self, query: str, language: str = "de", keep_english: bool = False) -> str:
+        """German version of a query. Routing (main.py) needs it for every
+        non-German question, English included — the topic and authority
+        keywords only cover German phrasing ("housing benefit" ≠ Wohngeld).
+        Retrieval passes keep_english: English embeds well against the
+        German corpus as it is (recall@5 en 100% untranslated), so it isn't
+        put at risk of translation noise. German queries and bare numbers
+        ("10115") come back unchanged without an API call."""
+        if not HAS_LETTERS.search(query):
+            return query
+        untranslated = ("de", "en") if keep_english else ("de",)
+        if NON_LATIN_QUERY.search(query) or language not in untranslated:
+            return self._query_to_german(query)
+        return query
+
     def _query_to_german(self, query: str) -> str:
         """Translate a non-Latin-script query to German for retrieval.
         Any failure falls back to the original query — retrieval quality
@@ -348,15 +365,24 @@ class RAGPipeline:
                 picked.append(candidates[index])
         return picked
 
-    def retrieve(self, query: str, language: str = "de") -> list[Chunk]:
+    def retrieve(
+        self, query: str, language: str = "de", query_de: str | None = None
+    ) -> list[Chunk]:
         """Embed the query and return the best chunks in rank order — the
         exact retrieval path /chat uses (evals reuse it). Plain vector
         top-K by default; with RERANK on, the vector search casts a wider
         net (CANDIDATE_K) and up to RERANK_EXTRA_K model-picked chunks are
-        appended after the untouched vector top-K."""
+        appended after the untouched vector top-K.
+
+        query_de: the caller's to_german() result for this query, so a
+        query main.py already translated for routing isn't paid for twice."""
         self._ensure_loaded()
-        if NON_LATIN_QUERY.search(query) or language not in ("de", "en"):
-            query = self._query_to_german(query)
+        english_as_is = language == "en" and not NON_LATIN_QUERY.search(query)
+        if query_de is None or english_as_is:
+            # English is embedded untranslated even when routing translated it.
+            query = self.to_german(query, language, keep_english=True)
+        else:
+            query = query_de
         embed_response = self._track(
             EMBEDDING_MODEL,
             self.client.embeddings.create(model=EMBEDDING_MODEL, input=query),
@@ -393,6 +419,7 @@ class RAGPipeline:
         meta_only: bool = False,
         chitchat: bool = False,
         retrieval_query: str | None = None,
+        query_de: str | None = None,
     ):
         # Capability meta-questions, pure small talk and "which office is
         # responsible?" without a subject all skip retrieval: random chunks
@@ -406,7 +433,12 @@ class RAGPipeline:
             # retrieval_query: follow-ups like "say that in Chinese" carry no
             # searchable meaning of their own — the caller passes a query
             # enriched with the previous question instead.
-            ordered_chunks = self.retrieve(retrieval_query or message, language=language)
+            # query_de translates `message`, so it only applies when the
+            # retrieval query IS the message.
+            if retrieval_query:
+                ordered_chunks = self.retrieve(retrieval_query, language=language)
+            else:
+                ordered_chunks = self.retrieve(message, language=language, query_de=query_de)
 
         context_text = "\n\n".join(f"[{c.title}]\n{c.content}" for c in ordered_chunks)
         if authority is not None:

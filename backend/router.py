@@ -89,6 +89,14 @@ AUTHORITY_KEYWORDS = [
     "where should i go",
 ]
 
+# Where-to-apply questions with words in between, which the fixed phrases
+# above miss: "Wo kann ich Wohngeld beantragen?" is also what the query
+# translation makes of most non-German questions ("住房補助要去哪裡申請？").
+AUTHORITY_PATTERNS = [
+    re.compile(r"\bwo(hin)?\b[^?.!]*\b(beantrag|antrag|bekomm|anmeld|abmeld|meld)", re.IGNORECASE),
+    re.compile(r"\bwhere\b[^?.!]*\b(apply|register|submit|get)", re.IGNORECASE),
+]
+
 PLZ_PATTERN = re.compile(r"\b\d{5}\b")
 
 # Capability meta-questions ("what can I ask you?") must not go through
@@ -195,7 +203,9 @@ class QueryRouter:
 
     def wants_authority(self, message: str) -> bool:
         lowered = message.lower()
-        return any(keyword in lowered for keyword in AUTHORITY_KEYWORDS)
+        return any(keyword in lowered for keyword in AUTHORITY_KEYWORDS) or any(
+            pattern.search(message) for pattern in AUTHORITY_PATTERNS
+        )
 
     def extract_plz(self, message: str) -> str | None:
         match = PLZ_PATTERN.search(message)

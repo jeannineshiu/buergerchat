@@ -125,6 +125,32 @@ class TestQueryTranslation:
         pipeline.retrieve("Kaç yaşında emekli olabilirim?", language="tr")
         assert captured == ["STUB ANSWER"]
 
+    def test_to_german_skips_german_and_bare_numbers(self, pipeline):
+        assert pipeline.to_german("Wie hoch ist das Kindergeld?", "de") == "Wie hoch ist das Kindergeld?"
+        assert pipeline.to_german("10115", "zh-Hant") == "10115"
+        assert pipeline.to_german("How much is Kindergeld?", "en", keep_english=True) == "How much is Kindergeld?"
+        assert pipeline.client.chat.completions.calls == []
+
+    def test_to_german_translates_english_for_routing(self, pipeline):
+        assert pipeline.to_german("Where do I apply for housing benefit?", "en") == "STUB ANSWER"
+
+    def test_english_retrieval_ignores_routing_translation(self, pipeline):
+        # Routing's translation of an English question must not replace
+        # the untranslated English embedding retrieval was tuned on.
+        captured = self._capture_embed_inputs(pipeline)
+        pipeline.retrieve("How much is Kindergeld?", language="en", query_de="Wie hoch ist das Kindergeld?")
+        assert captured == ["How much is Kindergeld?"]
+
+    def test_to_german_translates_other_languages(self, pipeline):
+        assert pipeline.to_german("Kindergeld 可以補領嗎？", "zh-Hant") == "STUB ANSWER"
+
+    def test_given_translation_is_not_paid_for_again(self, pipeline):
+        captured = self._capture_embed_inputs(pipeline)
+        pipeline.retrieve("Kindergeld 可以補領嗎？", language="zh-Hant", query_de="Kindergeld nachträglich?")
+        assert captured == ["Kindergeld nachträglich?"]
+        prompts = [call[0]["content"] for call in pipeline.client.chat.completions.calls]
+        assert not any("Übersetze" in prompt for prompt in prompts)
+
     def test_translation_failure_falls_back_to_original(self, pipeline):
         captured = self._capture_embed_inputs(pipeline)
 
