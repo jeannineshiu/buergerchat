@@ -99,3 +99,17 @@ All offline — OpenAI, FAISS files and the PVOG API are stubbed (httpx.MockTran
 ## Memory & note-taking
 
 When generating summaries, architecture explanations, or project notes: automatically save the content as a Markdown file inside `./notes/` (e.g. `./notes/YYYY-MM-DD-topic.md`), creating the folder if it doesn't exist. Never save these to `/tmp` or another temp directory. Format the Markdown clearly with headers and code blocks.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues (jeannineshiu/buergerchat), via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default vocabulary: needs-triage, needs-info, ready-for-agent, ready-for-human, wontfix. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one root `CONTEXT.md` + `docs/adr/` (neither exists yet; created lazily). See `docs/agents/domain.md`.
