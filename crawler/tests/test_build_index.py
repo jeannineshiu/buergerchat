@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 import build_index
 
 
@@ -93,3 +95,97 @@ class TestBuildFaissIndex:
         faiss.normalize_L2(query)
         _, ids = index.search(query, 1)
         assert ids[0][0] == 3
+
+
+class FakeEmbeddings:
+    """Deterministic stand-in for client.embeddings: one vector per text,
+    derived from its hash; records every text it was asked to embed."""
+
+    def __init__(self):
+        self.calls: list[str] = []
+
+    def create(self, model, input):
+        import numpy as np
+        from types import SimpleNamespace
+
+        self.calls.extend(input)
+        data = []
+        for text in input:
+            seed = int(build_index.content_key(text)[:8], 16)
+            vector = np.random.default_rng(seed).standard_normal(build_index.EMBEDDING_DIM)
+            data.append(SimpleNamespace(embedding=vector.tolist()))
+        return SimpleNamespace(data=data)
+
+
+class TestIncrementalBuild:
+    @pytest.fixture
+    def env(self, tmp_path, monkeypatch):
+        from types import SimpleNamespace
+
+        source = tmp_path / "src.jsonl"
+        monkeypatch.setattr(build_index, "INPUT_FILES", [(source, "src")])
+        monkeypatch.setattr(build_index, "MERGED_OUTPUT_PATH", tmp_path / "merged.jsonl")
+        db_path = tmp_path / "metadata.db"
+        index_path = tmp_path / "faiss_index.bin"
+        monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path}")
+        monkeypatch.setenv("FAISS_INDEX_PATH", str(index_path))
+        monkeypatch.setenv("OPENAI_API_KEY", "test")
+        embeddings = FakeEmbeddings()
+        monkeypatch.setattr(build_index, "OpenAI", lambda api_key: SimpleNamespace(embeddings=embeddings))
+
+        def write(*contents):
+            source.write_text("".join(
+                json.dumps({"url": f"u{i}", "title": "t", "topic": "x", "content": c, "crawled_at": "d"}) + "\n"
+                for i, c in enumerate(contents)
+            ))
+
+        def build(*argv):
+            monkeypatch.setattr("sys.argv", ["build_index.py", *argv])
+            embeddings.calls.clear()
+            build_index.main()
+            return list(embeddings.calls)
+
+        return SimpleNamespace(write=write, build=build, index_path=index_path, db=f"sqlite:///{db_path}")
+
+    def test_first_build_embeds_everything(self, env):
+        env.write("alpha", "beta")
+        assert sorted(env.build()) == ["alpha", "beta"]
+
+    def test_unchanged_input_writes_nothing(self, env, capsys):
+        env.write("alpha", "beta")
+        env.build()
+        mtime = env.index_path.stat().st_mtime_ns
+        assert env.build() == []
+        assert env.index_path.stat().st_mtime_ns == mtime
+        assert "unchanged" in capsys.readouterr().out
+
+    def test_only_new_or_changed_chunks_are_embedded(self, env):
+        env.write("alpha", "beta")
+        env.build()
+        env.write("alpha", "beta changed", "gamma")
+        assert sorted(env.build()) == ["beta changed", "gamma"]
+
+    def test_reused_vectors_land_on_the_right_ids(self, env):
+        import faiss
+        import numpy as np
+
+        env.write("alpha", "beta")
+        env.build()
+        env.write("gamma", "beta", "alpha")  # reorder: ids shift
+        env.build()
+        rows, vectors = build_index.load_previous_build(env.db, env.index_path)
+        assert [r[4] for r in rows] == ["gamma", "beta", "alpha"]
+        index = faiss.read_index(str(env.index_path))
+        for i, text in enumerate(["gamma", "beta", "alpha"]):
+            expected = np.array([FakeEmbeddings().create(None, [text]).data[0].embedding], dtype="float32")
+            faiss.normalize_L2(expected)
+            _, ids = index.search(expected, 1)
+            assert ids[0][0] == i
+
+    def test_full_flag_re_embeds_everything(self, env):
+        env.write("alpha", "beta")
+        env.build()
+        assert sorted(env.build("--full")) == ["alpha", "beta"]
+
+    def test_no_previous_build_returns_empty(self, env):
+        assert build_index.load_previous_build(env.db, env.index_path) == ([], {})

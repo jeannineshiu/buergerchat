@@ -4,7 +4,9 @@
 # Crawlers skip already-crawled URLs (crawler/output/*.jsonl is the state),
 # so with existing output this picks up new/changed pages only; on a fresh
 # checkout it is a full crawl (~2h, bzst's 30s robots crawl-delay dominates).
-# build_index.py always re-embeds everything (~$0.15 at current corpus size).
+# build_index.py reuses the previous data/ build's vectors and only embeds
+# new or changed chunks (a full re-embed is ~$0.15 at current corpus size;
+# `python build_index.py --full` forces one).
 #
 # Usage: scripts/recrawl.sh            # needs OPENAI_API_KEY (or backend/.env)
 # Afterwards: scripts/upload-index.sh  # push data/ to the Railway volume

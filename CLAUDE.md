@@ -28,7 +28,7 @@ buergerchat/
 - `crawler/arbeitsagentur_crawler.py` — sitemap-driven crawl of arbeitsagentur.de, topic-filtered by URL keywords → `crawler/output/arbeitsagentur.jsonl`. Incremental: re-running skips already-crawled URLs and appends.
 - `crawler/gesetze_crawler.py` — 9 laws (SGB I/II/VI/VIII/X/XII, BKGG, WoGG, AufenthG) from gesetze-im-internet.de, one record per § section → `crawler/output/gesetze.jsonl`. Site pages are ISO-8859-1, not UTF-8.
 - `crawler/portal_crawler.py` — one configurable crawler for the portal sites → `crawler/output/portal_<site>.jsonl`: familienportal.de (family benefits), bzst.de (Steuer-ID/taxes; **robots Crawl-delay 30s**, only `/DE/Privatpersonen/`), deutsche-rentenversicherung.de (Rente; Crawl-delay 12s), bmwsb.bund.de (Wohngeld), bamf.de (Aufenthalt; no sitemap → BFS restricted to `/DE/Themen/`, depth ≤ 3), service.berlin.de (~1,100 Berlin Dienstleistungen; BFS from the German index, numeric detail pages only, topic `berlin`), elster.de (using the tax portal — registration, certificates, einfachELSTER; no robots.txt and no sitemap → BFS from three `/infoseite` seeds, depth ≤ 3, topic `steuern`; the actual form guidance sits behind login). Sitemap-driven otherwise, incremental like the arbeitsagentur crawler. `python portal_crawler.py [site ...] [--limit N]`. Uses the lxml parser — service.berlin.de markup breaks bs4's html.parser (loses `<body>`).
-- `crawler/build_index.py` — merge JSONLs → chunk (800 chars / 100 overlap) → OpenAI embeddings → writes `data/faiss_index.bin` + `data/metadata.db` (drop-and-recreate, full re-embed each run).
+- `crawler/build_index.py` — merge JSONLs → chunk (800 chars / 100 overlap) → OpenAI embeddings → writes `data/faiss_index.bin` + `data/metadata.db` (drop-and-recreate). Vectors of chunks whose content is byte-identical to one in the existing `data/` build are reused, so only new or changed chunks are embedded; if the chunk list is unchanged it writes nothing (no redeploy needed). `--full` re-embeds everything — required after changing `EMBEDDING_MODEL`, since the build doesn't record which model made its vectors.
 - `crawler/main.py` — placeholder, unused.
 
 JSONL record schema: `{url, title, content, topic, crawled_at}` (+ `law` for gesetze). Crawlers use User-Agent `BuergerChat-Bot/1.0 (educational project)` and 1–2 s sleep between requests.
@@ -76,7 +76,7 @@ npm run dev     # http://localhost:3000; its /api proxy expects the backend on :
 
 ```bash
 cd backend && pip install -r requirements-dev.txt && python -m pytest tests/   # 140 tests
-cd crawler && python -m pytest tests/                                          # 41 tests
+cd crawler && python -m pytest tests/                                          # 47 tests
 cd frontend && npm test                                                        # 49 tests (vitest)
 ```
 

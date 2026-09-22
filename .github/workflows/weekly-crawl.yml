@@ -5,6 +5,9 @@
 # it) is carried from week to week as the `crawl-state` artifact of the
 # last successful run. Without one (first run, or the last success is
 # older than the artifact retention) this is a full crawl, ~2–2.5 h.
+# That run's `index` artifact is restored into data/ as well, so
+# build_index.py only embeds new or changed chunks and skips the build
+# entirely when nothing changed.
 # The built index is published as the `index` artifact; fetch it with
 # scripts/download-index.sh, then scripts/upload-index.sh + redeploy.
 #
@@ -47,11 +50,11 @@ jobs:
       - name: Install crawler dependencies
         run: pip install -r crawler/requirements.txt
 
-      - name: Restore crawl state from the last successful run
+      - name: Restore crawl state + index from the last successful run
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          mkdir -p crawler/output
+          mkdir -p crawler/output data
           run_id=$(gh run list --workflow weekly-crawl.yml --status success --limit 1 \
             --json databaseId -q '.[0].databaseId')
           if [ -n "$run_id" ] && gh run download "$run_id" -n crawl-state -D crawler/output; then
@@ -60,6 +63,11 @@ jobs:
           else
             echo "no crawl state available — full crawl"
           fi
+          if [ -n "$run_id" ] && gh run download "$run_id" -n index -D data; then
+            echo "restored index from run $run_id (built $(cat data/published_at))"
+          else
+            echo "no previous index available — full re-embed"
+          fi
 
       - name: Crawl + build index
         env:
@@ -67,7 +75,12 @@ jobs:
         run: |
           set -o pipefail
           bash scripts/recrawl.sh 2>&1 | tee crawl.log
-          date -u +%FT%TZ > data/published_at
+          # build_index.py leaves data/ untouched when nothing changed;
+          # keep the restored stamp then, so it still says when the
+          # index was actually built.
+          if ! grep -q "unchanged since the previous build" crawl.log; then
+            date -u +%FT%TZ > data/published_at
+          fi
 
       - name: Upload crawl state
         uses: actions/upload-artifact@v4

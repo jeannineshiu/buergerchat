@@ -5,11 +5,20 @@ Per CLAUDE.md: index *building* is the crawler's job; the backend only
 meant to be re-run whenever crawler output changes — currently a manual
 step, a Railway cron job later.
 
+Embeddings are reused from the previous build: a chunk whose content is
+byte-identical to one in the existing data/ index keeps that vector, so
+only new or changed chunks cost an OpenAI call. When the chunk list is
+identical to the previous build, nothing is written at all (and nothing
+needs a redeploy). `--full` re-embeds everything — required after
+changing EMBEDDING_MODEL, since the previous build does not record which
+model made its vectors.
+
 Defines its own local Chunk/DB schema instead of importing backend/app —
 crawler and backend are independent modules with separate dependency sets
 (see CLAUDE.md), so they agree on a schema rather than share code.
 """
 
+import argparse
 import hashlib
 import json
 import os
@@ -22,7 +31,7 @@ import numpy as np
 from dotenv import load_dotenv
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from openai import OpenAI, RateLimitError
-from sqlalchemy import Column, Integer, String, Text, create_engine
+from sqlalchemy import Column, Integer, String, Text, create_engine, inspect
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -119,6 +128,17 @@ def chunk_records(records: list[dict]) -> list[dict]:
     return chunks
 
 
+def content_key(content: str) -> str:
+    return hashlib.sha256(content.strip().encode("utf-8")).hexdigest()
+
+
+CHUNK_FIELDS = ("url", "title", "topic", "source", "content", "crawled_at")
+
+
+def chunk_row(chunk: dict) -> tuple:
+    return tuple(chunk[field] for field in CHUNK_FIELDS)
+
+
 def dedupe_chunks(chunks: list[dict]) -> list[dict]:
     """Drop chunks whose content is byte-identical to an earlier one —
     e.g. arbeitsagentur.de syndicates the same article under multiple
@@ -129,7 +149,7 @@ def dedupe_chunks(chunks: list[dict]) -> list[dict]:
     seen: set[str] = set()
     deduped = []
     for chunk in chunks:
-        key = hashlib.sha256(chunk["content"].strip().encode("utf-8")).hexdigest()
+        key = content_key(chunk["content"])
         if key in seen:
             continue
         seen.add(key)
@@ -156,6 +176,36 @@ def embed_texts(client: OpenAI, texts: list[str]) -> list[list[float]]:
         embeddings.extend(item.embedding for item in response.data)
         print(f"embedded {min(i + EMBED_BATCH_SIZE, len(texts))}/{len(texts)}")
     return embeddings
+
+
+def load_previous_build(database_url: str, index_path: Path) -> tuple[list[tuple], dict[str, np.ndarray]]:
+    """Chunk rows (in id order) and content_key -> vector of the existing
+    build, or ([], {}) when there is none or it is inconsistent. Chunk id ==
+    FAISS id == position (see build_faiss_index), so the i-th stored vector
+    belongs to the i-th row."""
+    if not index_path.exists():
+        return [], {}
+    engine = create_engine(database_url)
+    try:
+        if not inspect(engine).has_table(Chunk.__tablename__):
+            return [], {}
+        session = sessionmaker(bind=engine)()
+        chunks = session.query(Chunk).order_by(Chunk.id).all()
+        rows = [tuple(getattr(c, field) for field in CHUNK_FIELDS) for c in chunks]
+        ids = [c.id for c in chunks]
+        session.close()
+    finally:
+        engine.dispose()
+
+    index = faiss.read_index(str(index_path))
+    if index.d != EMBEDDING_DIM or index.ntotal != len(rows) or ids != list(range(len(rows))):
+        print("[warn] previous index does not match its metadata — re-embedding everything", file=sys.stderr)
+        return [], {}
+    # IndexIDMap cannot reconstruct by id; the wrapped flat index stores
+    # the vectors in insertion order, which is id order here.
+    vectors = faiss.downcast_index(index.index).reconstruct_n(0, index.ntotal)
+    content_idx = CHUNK_FIELDS.index("content")
+    return rows, {content_key(row[content_idx]): vectors[i] for i, row in enumerate(rows)}
 
 
 def write_metadata_db(database_url: str, chunks: list[dict]) -> None:
@@ -192,11 +242,11 @@ def build_faiss_index(embeddings: list[list[float]]) -> faiss.Index:
 
 
 def main() -> None:
-    load_dotenv(REPO_ROOT / "backend" / ".env")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--full", action="store_true", help="re-embed every chunk instead of reusing the previous build's vectors")
+    args = parser.parse_args()
 
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        sys.exit("OPENAI_API_KEY not set (checked backend/.env)")
+    load_dotenv(REPO_ROOT / "backend" / ".env")
 
     database_url = resolve_database_url(os.environ.get("DATABASE_URL", "sqlite:///data/metadata.db"))
     index_path = resolve_faiss_path(os.environ.get("FAISS_INDEX_PATH", "data/faiss_index.bin"))
@@ -212,8 +262,23 @@ def main() -> None:
     print(f"{len(deduped)} chunks after dedup ({len(chunks) - len(deduped)} duplicates dropped)")
     chunks = deduped
 
-    client = OpenAI(api_key=api_key)
-    embeddings = embed_texts(client, [c["content"] for c in chunks])
+    previous_rows, previous_vectors = ([], {}) if args.full else load_previous_build(database_url, index_path)
+    if previous_rows and previous_rows == [chunk_row(c) for c in chunks]:
+        print("unchanged since the previous build — nothing written")
+        return
+
+    to_embed = [c for c in chunks if content_key(c["content"]) not in previous_vectors]
+    print(f"{len(chunks) - len(to_embed)} embeddings reused, {len(to_embed)} to embed")
+    new_vectors = {}
+    if to_embed:
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            sys.exit("OPENAI_API_KEY not set (checked backend/.env)")
+        client = OpenAI(api_key=api_key)
+        embedded = embed_texts(client, [c["content"] for c in to_embed])
+        new_vectors = {content_key(c["content"]): v for c, v in zip(to_embed, embedded)}
+    vectors = previous_vectors | new_vectors
+    embeddings = [vectors[content_key(c["content"])] for c in chunks]
 
     print(f"writing metadata -> {database_url}")
     write_metadata_db(database_url, chunks)
