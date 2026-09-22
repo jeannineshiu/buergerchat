@@ -13,6 +13,16 @@ Politeness: per-site delay honors robots.txt Crawl-delay (bzst: 30s, DRV: 12s
 — checked 2026-07); robots Disallow prefixes are baked into url_exclude.
 Incremental like the arbeitsagentur crawler: re-running skips URLs already in
 the output JSONL. Usage: python portal_crawler.py [site ...] [--limit N]
+
+arbeitsagentur.de stays a separate crawler on purpose (checked 2026-09-22 on
+real pages). Its extraction is the opposite of this one on two rules: the
+title must come from <title>, because the first h1 is an image credit
+("Bildnachweis" on 5 of 5 sampled pages), and <aside> must be kept, because it
+carries contact persons and phone numbers (dropping it cut one press release
+by 18%). Its output name, arbeitsagentur.jsonl, is also the crawl state the
+weekly workflow carries over. As a Site it would need three switches used by
+no other site, to save ~50 lines. tests/test_arbeitsagentur_crawler.py pins
+both rules.
 """
 
 import gzip
