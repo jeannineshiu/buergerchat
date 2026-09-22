@@ -21,7 +21,8 @@ from app.models import FeedbackMessage, FeedbackSession
 from behoerde import BehoerdeFinder
 from budget import DailyBudget
 from rag import IndexNotReadyError, RAGPipeline
-from router import DEFAULT_TOPIC, QueryRouter
+from router import QueryRouter
+from turn_plan import TurnPlanner
 
 # Creates only the missing feedback tables; a no-op once they exist.
 FeedbackBase.metadata.create_all(feedback_engine)
@@ -102,6 +103,7 @@ query_router = QueryRouter()
 daily_budget = DailyBudget.from_env(usage_engine)
 rag_pipeline = RAGPipeline(on_usage=daily_budget.record)
 behoerde_finder = BehoerdeFinder()
+turn_planner = TurnPlanner(query_router, behoerde_finder, rag_pipeline.to_german)
 answer_cache = AnswerCache()
 
 
@@ -177,128 +179,16 @@ def chat(request: Request, chat_request: ChatRequest) -> ChatResponse:
 
 
 def answer_question(chat_request: ChatRequest) -> ChatResponse:
-    # Intent, topic and PLZ may be split across turns ("Wo ist mein
-    # Jobcenter?" → bot asks for PLZ → "10115"), so fall back to the
-    # user's history for whatever the new message doesn't contain.
-    user_history = [m.content for m in chat_request.history if m.role == "user"]
-
-    if query_router.is_chitchat(chat_request.message):
-        # Pure small talk ("hi", "danke", "bye") — skip retrieval, same as
-        # meta-questions, so no LLM call burns an embedding + top-5 search
-        # (and no stray chunks leak into a source list that shouldn't exist).
-        answer, _ = rag_pipeline.query(
-            chat_request.message,
-            language=chat_request.language,
-            history=[m.model_dump() for m in chat_request.history],
-            chitchat=True,
-        )
-        return ChatResponse(answer=answer, sources=[], topic=DEFAULT_TOPIC)
-
-    if query_router.is_meta_question(chat_request.message):
-        answer, _ = rag_pipeline.query(
-            chat_request.message,
-            language=chat_request.language,
-            history=[m.model_dump() for m in chat_request.history],
-            meta_only=True,
-        )
-        return ChatResponse(answer=answer, sources=[], topic=DEFAULT_TOPIC)
-
-    # Topic and authority keywords are German/English only, so routing also
-    # looks at the German translation — the same one retrieval embeds, so a
-    # first-turn question costs no extra call. Translations are cached per
-    # request; for de/en messages to_german() is a no-op.
-    translations: dict[str, str] = {}
-
-    def german(text: str) -> str:
-        if text not in translations:
-            translations[text] = rag_pipeline.to_german(text, chat_request.language)
-        return translations[text]
-
-    def classify(text: str, translate: bool = True) -> str:
-        found = query_router.classify(text)
-        if found == DEFAULT_TOPIC and translate:
-            found = query_router.classify(german(text))
-        return found
-
-    def asks_for_authority(text: str, translate: bool = True) -> bool:
-        return query_router.wants_authority(text) or (
-            translate and query_router.wants_authority(german(text))
-        )
-
-    # History messages are only translated for the last two user turns —
-    # each translation is a model call, and older turns rarely decide.
-    recent_history = user_history[-2:]
-
-    message_topic = classify(chat_request.message)
-    topic = message_topic
-    if topic == DEFAULT_TOPIC:
-        for i, past in enumerate(reversed(user_history)):
-            past_topic = classify(past, translate=i < len(recent_history))
-            if past_topic != DEFAULT_TOPIC:
-                topic = past_topic
-                break
-
-    # Short follow-ups ("erkläre das nochmal", "用中文講一次", a bare PLZ)
-    # carry no searchable meaning — embedding them retrieves noise. Enrich
-    # the retrieval query with the previous question; the prompt still shows
-    # the user's actual message.
-    retrieval_query = None
-    if message_topic == DEFAULT_TOPIC and user_history and len(chat_request.message) <= 80:
-        retrieval_query = f"{user_history[-1]}\n{chat_request.message}"
-
-    plz = query_router.extract_plz(chat_request.message)
-    if plz is None:
-        for past in reversed(user_history):
-            plz = query_router.extract_plz(past)
-            if plz:
-                break
-
-    # Translating history just to detect intent only pays off once a PLZ
-    # makes a lookup possible ("住房補助要去哪裡申請？" → "10115").
-    wants_authority = asks_for_authority(chat_request.message) or any(
-        asks_for_authority(past, translate=plz is not None) for past in recent_history
-    )
-
-    authority = None
-    ask_for_plz = False
-    ask_for_topic = False
-    authority_missing = False
-    if wants_authority and plz:
-        # A bare-PLZ follow-up carries no searchable text of its own — the
-        # question it answers is the previous user message. PVOG is searched
-        # in German either way.
-        lookup_query = chat_request.message
-        if chat_request.message.strip() == plz and user_history:
-            lookup_query = user_history[-1]
-        authority = behoerde_finder.find(plz, german(lookup_query), topic=topic)
-        # A postcode alone does not determine a Behörde — responsibility is
-        # per service. When the lookup came back empty and the message never
-        # said what it is about ("Which office is responsible? 10115"), ask
-        # rather than send the person off to a generic search page.
-        if authority is None and topic == DEFAULT_TOPIC:
-            ask_for_topic = True
-        else:
-            authority_missing = authority is None
-    elif wants_authority:
-        ask_for_plz = True
-
-    answer, sources = rag_pipeline.query(
+    plan = turn_planner.plan(
         chat_request.message,
         language=chat_request.language,
-        topic=topic,
-        authority=authority,
-        ask_for_plz=ask_for_plz,
-        ask_for_topic=ask_for_topic,
-        authority_missing=authority_missing,
         history=[m.model_dump() for m in chat_request.history],
-        retrieval_query=retrieval_query,
-        query_de=translations.get(chat_request.message),
     )
-
+    answer, sources = rag_pipeline.answer(plan)
     return ChatResponse(
         answer=answer,
         sources=[Source(**s) for s in sources],
-        topic=topic,
+        topic=plan.topic,
     )
 
 

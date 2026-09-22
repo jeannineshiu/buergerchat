@@ -166,6 +166,7 @@ def main():
 
     import rag
     from rag import RAGPipeline
+    from turn_plan import TurnPlan
 
     items = load_golden(args.limit)
     if args.languages == "all":
@@ -234,7 +235,7 @@ def main():
             question = item["questions"].get(lang)
             if not question or over_budget():
                 continue
-            answer, sources = pipeline.query(question, language=lang, topic=item["topic"])
+            answer, sources = pipeline.answer(TurnPlan.direct(question, language=lang, topic=item["topic"]))
             result = check_answer(answer, sources, item, lang)
             answer_pass[lang].append(result["pass"])
             if not result["pass"]:

@@ -9,6 +9,7 @@ import pytest
 import rag
 from behoerde import BehoerdeResult
 from rag import IndexNotReadyError, RAGPipeline, language_directive, resolve_faiss_path
+from turn_plan import Found, Kind, NeedsPlz, NotFound, TurnPlan
 
 CHUNKS = [
     (0, "Bürgergeld ist eine Leistung des Jobcenters."),
@@ -67,20 +68,33 @@ def pipeline(data_dir, fake_openai, monkeypatch):
     return p
 
 
+def capture_embed_inputs(pipeline):
+    """Record every text the pipeline embeds, in order."""
+    captured = []
+    original = pipeline.client.embeddings.create
+
+    def recording_create(model, input):  # noqa: A002 - OpenAI SDK signature
+        captured.append(input)
+        return original(model=model, input=input)
+
+    pipeline.client.embeddings.create = recording_create
+    return captured
+
+
 class TestLazyLoading:
     def test_init_does_not_touch_index_file(self, fake_openai):
         p = RAGPipeline()
         p.client = fake_openai
         assert p.index is None and not p.index_loaded
 
-    def test_query_raises_when_index_missing(self, data_dir, fake_openai):
+    def test_answer_raises_when_index_missing(self, data_dir, fake_openai):
         index_file = data_dir / "faiss_index.bin"
         if index_file.exists():
             index_file.unlink()
         p = RAGPipeline()
         p.client = fake_openai
         with pytest.raises(IndexNotReadyError):
-            p.query("Was ist Bürgergeld?")
+            p.answer(TurnPlan.direct("Was ist Bürgergeld?"))
         assert p.load() is False
 
     def test_load_succeeds_once_file_appears(self, pipeline):
@@ -89,19 +103,8 @@ class TestLazyLoading:
 
 
 class TestQueryTranslation:
-    def _capture_embed_inputs(self, pipeline):
-        captured = []
-        original = pipeline.client.embeddings.create
-
-        def recording_create(model, input):  # noqa: A002 - OpenAI SDK signature
-            captured.append(input)
-            return original(model=model, input=input)
-
-        pipeline.client.embeddings.create = recording_create
-        return captured
-
     def test_non_latin_query_is_translated_before_embedding(self, pipeline):
-        captured = self._capture_embed_inputs(pipeline)
+        captured = capture_embed_inputs(pipeline)
         pipeline.retrieve("Kindergeld 可以補領嗎？")
         # The fake chat client answers "STUB ANSWER" — that translation,
         # not the original Chinese, must be what gets embedded.
@@ -111,7 +114,7 @@ class TestQueryTranslation:
         assert "Übersetze" in system["content"]
 
     def test_latin_query_embeds_directly_without_translation_call(self, pipeline):
-        captured = self._capture_embed_inputs(pipeline)
+        captured = capture_embed_inputs(pipeline)
         pipeline.retrieve("Wie hoch ist das Kindergeld?")
         assert captured == ["Wie hoch ist das Kindergeld?"]
         prompts = [call[0]["content"] for call in pipeline.client.chat.completions.calls]
@@ -121,7 +124,7 @@ class TestQueryTranslation:
         # Turkish/Polish/etc. queries are Latin-script but embed poorly
         # against the German corpus — the request language triggers the
         # translation even without a script signal.
-        captured = self._capture_embed_inputs(pipeline)
+        captured = capture_embed_inputs(pipeline)
         pipeline.retrieve("Kaç yaşında emekli olabilirim?", language="tr")
         assert captured == ["STUB ANSWER"]
 
@@ -137,7 +140,7 @@ class TestQueryTranslation:
     def test_english_retrieval_ignores_routing_translation(self, pipeline):
         # Routing's translation of an English question must not replace
         # the untranslated English embedding retrieval was tuned on.
-        captured = self._capture_embed_inputs(pipeline)
+        captured = capture_embed_inputs(pipeline)
         pipeline.retrieve("How much is Kindergeld?", language="en", query_de="Wie hoch ist das Kindergeld?")
         assert captured == ["How much is Kindergeld?"]
 
@@ -145,14 +148,14 @@ class TestQueryTranslation:
         assert pipeline.to_german("Kindergeld 可以補領嗎？", "zh-Hant") == "STUB ANSWER"
 
     def test_given_translation_is_not_paid_for_again(self, pipeline):
-        captured = self._capture_embed_inputs(pipeline)
+        captured = capture_embed_inputs(pipeline)
         pipeline.retrieve("Kindergeld 可以補領嗎？", language="zh-Hant", query_de="Kindergeld nachträglich?")
         assert captured == ["Kindergeld nachträglich?"]
         prompts = [call[0]["content"] for call in pipeline.client.chat.completions.calls]
         assert not any("Übersetze" in prompt for prompt in prompts)
 
     def test_translation_failure_falls_back_to_original(self, pipeline):
-        captured = self._capture_embed_inputs(pipeline)
+        captured = capture_embed_inputs(pipeline)
 
         def broken_create(model, messages, **kwargs):
             raise RuntimeError("api down")
@@ -163,9 +166,9 @@ class TestQueryTranslation:
         assert isinstance(chunks, list)
 
 
-class TestQuery:
+class TestAnswer:
     def test_retrieves_matching_chunk_as_source(self, pipeline):
-        answer, sources = pipeline.query("Bürgergeld ist eine Leistung des Jobcenters.")
+        answer, sources = pipeline.answer(TurnPlan.direct("Bürgergeld ist eine Leistung des Jobcenters."))
         assert answer == "STUB ANSWER"
         assert sources[0]["url"] == "https://example.org/0"
 
@@ -173,7 +176,7 @@ class TestQuery:
         monkeypatch.setattr(rag, "TOP_K", 7)  # retrieve everything → all dupes present
         # Both halves of the Kindergeld page should be retrieved (identical
         # first words → similar fake embeddings), but the source appears once.
-        _, sources = pipeline.query("Kindergeld Teil eins: Anspruch und Höhe der Leistung.")
+        _, sources = pipeline.answer(TurnPlan.direct("Kindergeld Teil eins: Anspruch und Höhe der Leistung."))
         urls = [s["url"] for s in sources]
         norm_titles = [" ".join(s["title"].split()).lower() for s in sources]
         assert len(urls) == len(set(urls))
@@ -185,8 +188,8 @@ class TestQuery:
             authority_name="Familienkasse", service_name="Kindergeld",
             website="https://example.org/0",  # same URL as a retrieved chunk
         )
-        _, sources = pipeline.query(
-            "Bürgergeld ist eine Leistung des Jobcenters.", authority=authority
+        _, sources = pipeline.answer(
+            TurnPlan(Kind.ANSWER, "Bürgergeld ist eine Leistung des Jobcenters.", authority=Found(authority))
         )
         urls = [s["url"] for s in sources]
         assert urls.count("https://example.org/0") == 1
@@ -196,18 +199,18 @@ class TestQuery:
         authority = BehoerdeResult(
             authority_name="Jobcenter Test", service_name="Bürgergeld", website="https://jc.example"
         )
-        _, sources = pipeline.query("Bürgergeld", authority=authority)
+        _, sources = pipeline.answer(TurnPlan(Kind.ANSWER, "Bürgergeld", authority=Found(authority)))
         assert sources[0] == {"title": "Jobcenter Test — Bürgergeld", "url": "https://jc.example"}
         prompt = pipeline.client.chat.completions.last_messages[-1]["content"]
         assert "Zuständige Stelle laut Behördenfinder (PVOG)" in prompt
 
-    def test_meta_only_skips_retrieval_and_sources(self, pipeline):
-        answer, sources = pipeline.query("Was kannst du?", meta_only=True)
+    def test_meta_skips_retrieval_and_sources(self, pipeline):
+        answer, sources = pipeline.answer(TurnPlan(Kind.META, "Was kannst du?"))
         assert answer == "STUB ANSWER"
         assert sources == []
 
     def test_chitchat_skips_retrieval_and_sources(self, pipeline):
-        answer, sources = pipeline.query("Hallo", chitchat=True)
+        answer, sources = pipeline.answer(TurnPlan(Kind.CHITCHAT, "Hallo"))
         assert answer == "STUB ANSWER"
         assert sources == []
         prompt = pipeline.client.chat.completions.last_messages[-1]["content"]
@@ -217,15 +220,25 @@ class TestQuery:
         # "Which office is responsible?" with no subject is answered with a
         # question back — citing whatever the embedding happened to match
         # (Baugenehmigung, Gewerbe anmelden) only looks like evidence.
-        answer, sources = pipeline.query("Which office is responsible?", ask_for_topic=True)
+        answer, sources = pipeline.answer(TurnPlan(Kind.ASK_FOR_TOPIC, "Which office is responsible?"))
         assert answer == "STUB ANSWER"
         assert sources == []
         prompt = pipeline.client.chat.completions.last_messages[-1]["content"]
         assert "worum es geht" in prompt
 
+    def test_enriched_retrieval_query_is_embedded_but_prompt_shows_message(self, pipeline):
+        captured = capture_embed_inputs(pipeline)
+        pipeline.answer(TurnPlan(
+            Kind.ANSWER, "nochmal bitte",
+            retrieval_query="Wer bekommt Kindergeld?\nnochmal bitte",
+        ))
+        assert captured == ["Wer bekommt Kindergeld?\nnochmal bitte"]
+        prompt = pipeline.client.chat.completions.last_messages[-1]["content"]
+        assert "Frage: nochmal bitte\n" in prompt
+
     def test_history_is_passed_and_truncated(self, pipeline):
         history = [{"role": "user", "content": f"msg{i}"} for i in range(10)]
-        pipeline.query("Bürgergeld", history=history)
+        pipeline.answer(TurnPlan(Kind.ANSWER, "Bürgergeld", history=tuple(history)))
         messages = pipeline.client.chat.completions.last_messages
         history_contents = [m["content"] for m in messages if m["content"].startswith("msg")]
         assert history_contents == [f"msg{i}" for i in range(4, 10)]  # last 6
@@ -243,29 +256,29 @@ class TestQuery:
             return type("Completion", (), {"choices": [choice]})()
 
         pipeline.client.chat.completions.create = fake_create
-        answer, _ = pipeline.query("Kindergeld rückwirkend", language="zh-Hant")
+        answer, _ = pipeline.answer(TurnPlan.direct("Kindergeld rückwirkend", language="zh-Hant"))
         assert answer == "最多可追溯領 6 個月"
         assert len(calls) == 3
         assert "Übersetze" in calls[0][0]["content"]
         assert "mixes in another language" in calls[2][-1]["content"]
 
     def test_clean_answer_needs_no_retry(self, pipeline):
-        answer, _ = pipeline.query("Bürgergeld", language="zh-Hant")
+        answer, _ = pipeline.answer(TurnPlan.direct("Bürgergeld", language="zh-Hant"))
         assert answer == "STUB ANSWER"
 
     def test_digits_directive_in_every_answer_prompt(self, pipeline):
         for language in ("de", "zh-Hant"):
-            pipeline.query("Wie hoch ist das Kindergeld?", language=language)
+            pipeline.answer(TurnPlan.direct("Wie hoch ist das Kindergeld?", language=language))
             prompt = pipeline.client.chat.completions.last_messages[-1]["content"]
             assert "Write every number as digits" in prompt
 
-    def test_ask_for_plz_directive_in_prompt(self, pipeline):
-        pipeline.query("Wo ist mein Jobcenter?", ask_for_plz=True)
+    def test_needs_plz_directive_in_prompt(self, pipeline):
+        pipeline.answer(TurnPlan(Kind.ANSWER, "Wo ist mein Jobcenter?", authority=NeedsPlz()))
         prompt = pipeline.client.chat.completions.last_messages[-1]["content"]
         assert "Postleitzahl" in prompt
 
-    def test_authority_missing_directive_forbids_invention(self, pipeline):
-        pipeline.query("Wo ist mein Jobcenter?", authority_missing=True)
+    def test_not_found_directive_forbids_invention(self, pipeline):
+        pipeline.answer(TurnPlan(Kind.ANSWER, "Wo ist mein Jobcenter?", authority=NotFound()))
         prompt = pipeline.client.chat.completions.last_messages[-1]["content"]
         assert "ERFINDE KEINE" in prompt
 
@@ -285,7 +298,7 @@ class TestReasoningEffort:
         monkeypatch.setattr(rag, "RERANK", True)
         monkeypatch.setattr(rag, "HELPER_REASONING_EFFORT", "none")
         monkeypatch.setattr(rag, "ANSWER_REASONING_EFFORT", "low")
-        pipeline.query("Kindergeld 可以補領嗎？", language="zh-Hant")
+        pipeline.answer(TurnPlan.direct("Kindergeld 可以補領嗎？", language="zh-Hant"))
         efforts = self._efforts(pipeline)
         # translation, rerank, answer — in that order
         assert [e for _, e in efforts] == ["none", "none", "low"]
@@ -296,7 +309,7 @@ class TestReasoningEffort:
         # For a CHAT_MODEL override that doesn't accept reasoning_effort.
         monkeypatch.setattr(rag, "HELPER_REASONING_EFFORT", "")
         monkeypatch.setattr(rag, "ANSWER_REASONING_EFFORT", "")
-        pipeline.query("Kindergeld 可以補領嗎？", language="zh-Hant")
+        pipeline.answer(TurnPlan.direct("Kindergeld 可以補領嗎？", language="zh-Hant"))
         assert all(
             "reasoning_effort" not in kwargs
             for kwargs in pipeline.client.chat.completions.call_kwargs
@@ -315,7 +328,7 @@ class TestReasoningEffort:
 
         fake.create = leaky_then_clean
         # German: no translation call, so the only calls are answer + retry.
-        pipeline.query("Wie hoch ist das Kindergeld?", language="de")
+        pipeline.answer(TurnPlan.direct("Wie hoch ist das Kindergeld?", language="de"))
         assert [k.get("reasoning_effort") for k in fake.call_kwargs] == ["medium", "medium"]
 
 
@@ -324,13 +337,13 @@ class TestUsageReporting:
         monkeypatch.setattr(rag, "RERANK", True)
         reported = []
         pipeline._on_usage = lambda model, usage: reported.append(model)
-        pipeline.query("Kindergeld 可以補領嗎？", language="zh-Hant")
+        pipeline.answer(TurnPlan.direct("Kindergeld 可以補領嗎？", language="zh-Hant"))
         # translation, embedding, rerank, answer
         assert reported == [rag.CHAT_MODEL, rag.EMBEDDING_MODEL, rag.RERANK_MODEL, rag.CHAT_MODEL]
 
     def test_no_callback_is_fine(self, pipeline):
         pipeline._on_usage = None
-        answer, _ = pipeline.query("Wie hoch ist das Kindergeld?")
+        answer, _ = pipeline.answer(TurnPlan.direct("Wie hoch ist das Kindergeld?"))
         assert answer == "STUB ANSWER"
 
 

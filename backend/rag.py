@@ -17,7 +17,7 @@ from openai import OpenAI
 
 from app.db import SessionLocal
 from app.models import Chunk
-from behoerde import BehoerdeResult
+from turn_plan import Found, Kind, NeedsPlz, NotFound, TurnPlan
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 EMBEDDING_MODEL = "text-embedding-3-small"
@@ -38,13 +38,13 @@ TOP_K = 5
 # (output: ~12 tokens of numbers) spent 512 reasoning tokens and 9-11 s,
 # the answer ~500 and 12-13 s — /chat took 21-27 s end to end. With "none"
 # the rerank takes ~1.4 s and the answer 5-7 s. Golden A/B, 19 items x
-# de/en/zh-Hant, default effort vs "none" for both: query() median
+# de/en/zh-Hant, default effort vs "none" for both: answer() median
 # 14.7/14.9/20.3 s -> 5.6/4.8/7.5 s; retrieval 19/19 everywhere (one
 # zh-Hant run 18/19, two reruns 19/19 — translation noise); answer eval
 # de/en 19/19 both, zh-Hant 17 vs 16/19, where every failure in BOTH arms
 # is the model spelling a correct figure in Chinese numerals (五百六十三,
 # 百分之六十), which the digit-only fact check can't match (since fixed by
-# the digits directive in query()). No offer endings in either arm. The
+# the digits directive in answer()). No offer endings in either arm. The
 # answer effort is separate from the helper effort so it can be raised on
 # its own. Accepted by gpt-5.5: none, low,
 # medium, high, xhigh ("minimal" is rejected). Set a variable to "" to
@@ -299,7 +299,7 @@ class RAGPipeline:
         return self._track(kwargs["model"], self.client.chat.completions.create(**kwargs))
 
     def to_german(self, query: str, language: str = "de", keep_english: bool = False) -> str:
-        """German version of a query. Routing (main.py) needs it for every
+        """German version of a query. Routing (turn_plan.py) needs it for every
         non-German question, English included — the topic and authority
         keywords only cover German phrasing ("housing benefit" ≠ Wohngeld).
         Retrieval passes keep_english: English embeds well against the
@@ -375,7 +375,7 @@ class RAGPipeline:
         appended after the untouched vector top-K.
 
         query_de: the caller's to_german() result for this query, so a
-        query main.py already translated for routing isn't paid for twice."""
+        query turn planning already translated for routing isn't paid for twice."""
         self._ensure_loaded()
         english_as_is = language == "en" and not NON_LATIN_QUERY.search(query)
         if query_de is None or english_as_is:
@@ -406,21 +406,9 @@ class RAGPipeline:
         extras = [c for c in self._rerank(query, candidates) if c.id not in head_ids]
         return head + extras[:RERANK_EXTRA_K]
 
-    def query(
-        self,
-        message: str,
-        language: str = "de",
-        topic: str | None = None,
-        authority: BehoerdeResult | None = None,
-        ask_for_plz: bool = False,
-        ask_for_topic: bool = False,
-        authority_missing: bool = False,
-        history: list[dict] | None = None,
-        meta_only: bool = False,
-        chitchat: bool = False,
-        retrieval_query: str | None = None,
-        query_de: str | None = None,
-    ):
+    def answer(self, plan: TurnPlan) -> tuple[str, list[dict]]:
+        """Answer one planned turn (turn_plan.py): retrieve if the plan's
+        kind calls for it, assemble the prompt, return (answer, sources)."""
         # Capability meta-questions, pure small talk and "which office is
         # responsible?" without a subject all skip retrieval: random chunks
         # would leak into the answer and the source list (see META rule in
@@ -428,18 +416,19 @@ class RAGPipeline:
         # nothing to retrieve on by definition — it is answered with a
         # question back, and cited Baugenehmigung pages next to it only
         # look like they belong to the answer.
+        language = plan.language
         ordered_chunks = []
-        if not meta_only and not chitchat and not ask_for_topic:
+        if plan.kind is Kind.ANSWER:
             # retrieval_query: follow-ups like "say that in Chinese" carry no
-            # searchable meaning of their own — the caller passes a query
+            # searchable meaning of their own — the plan carries a query
             # enriched with the previous question instead.
-            # query_de translates `message`, so it only applies when the
-            # retrieval query IS the message.
-            if retrieval_query:
-                ordered_chunks = self.retrieve(retrieval_query, language=language)
-            else:
-                ordered_chunks = self.retrieve(message, language=language, query_de=query_de)
+            ordered_chunks = self.retrieve(
+                plan.retrieval_query or plan.message,
+                language=language,
+                query_de=plan.retrieval_query_de,
+            )
 
+        authority = plan.authority.result if isinstance(plan.authority, Found) else None
         context_text = "\n\n".join(f"[{c.title}]\n{c.content}" for c in ordered_chunks)
         if authority is not None:
             context_text = (
@@ -466,7 +455,7 @@ class RAGPipeline:
             "number out in words or as Chinese/Korean numerals (NOT 五百六十三, "
             "百分之六十, 六十七歲). Arabic and Persian answers may use their own digits.",
         ]
-        if chitchat:
+        if plan.kind is Kind.CHITCHAT:
             directives.append(
                 "Die Nachricht ist reiner Small Talk (Begrüßung, Dank oder "
                 "Verabschiedung) ohne inhaltliche Frage. Antworte NUR mit "
@@ -474,13 +463,13 @@ class RAGPipeline:
                 "ohne Bezug zum Kontext, ohne Rückfrage, ohne Aufzählung "
                 "von Themen."
             )
-        if ask_for_plz:
+        if isinstance(plan.authority, NeedsPlz):
             directives.append(
                 "Die Person möchte wissen, welche Stelle zuständig ist, hat aber "
                 "keinen Ort genannt. Bitte sie (in der Antwortsprache) um ihre "
                 "Postleitzahl, damit du die zuständige Stelle nennen kannst."
             )
-        if ask_for_topic:
+        if plan.kind is Kind.ASK_FOR_TOPIC:
             directives.append(
                 "Die Person möchte wissen, welche Stelle zuständig ist, hat aber "
                 "nicht gesagt, worum es geht — und ohne Anliegen lässt sich keine "
@@ -489,7 +478,7 @@ class RAGPipeline:
                 "worum es geht, und nenne dabei Beispiele: Bürgergeld/"
                 "Grundsicherungsgeld, Kindergeld, Wohngeld, Rente, Aufenthalt."
             )
-        if authority_missing:
+        if isinstance(plan.authority, NotFound):
             directives.append(
                 "Die zuständige Stelle konnte nicht automatisch ermittelt werden. "
                 "ERFINDE KEINE Adressen oder Telefonnummern. Verweise die Person "
@@ -500,14 +489,14 @@ class RAGPipeline:
         # The last ~3 exchanges give follow-ups like a bare "10115" their
         # context; older turns add cost without adding grounding.
         history_messages = [
-            {"role": m["role"], "content": m["content"]} for m in (history or [])[-6:]
+            {"role": m["role"], "content": m["content"]} for m in plan.history[-6:]
         ]
         messages_payload = [
             {"role": "system", "content": SYSTEM_PROMPT},
             *history_messages,
             {
                 "role": "user",
-                "content": f"Kontext:\n{context_text}\n\nFrage: {message}\n\n"
+                "content": f"Kontext:\n{context_text}\n\nFrage: {plan.message}\n\n"
                 + "\n".join(directives),
             },
         ]

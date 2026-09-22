@@ -1,7 +1,9 @@
 """Integration tests: the FastAPI app end-to-end through TestClient, with
-the two external dependencies (RAG pipeline / PVOG finder) stubbed at the
-module boundary. Covers routing logic, validation, rate limiting, the
-feedback persistence path and error mapping."""
+the two external dependencies stubbed: RAGPipeline.answer() records the
+plan it gets, and turn planning runs for real against a fake PVOG finder
+and translation. Routing itself is covered in test_turn_plan.py; this file
+covers the HTTP layer — validation, rate limiting, the answer cache, the
+daily budget, feedback persistence and error mapping."""
 
 import pytest
 from fastapi.testclient import TestClient
@@ -9,58 +11,38 @@ from fastapi.testclient import TestClient
 import main
 from behoerde import BehoerdeResult
 from rag import IndexNotReadyError
-
-
-# What the stubbed query translation makes of non-German messages.
-TRANSLATIONS = {
-    "住房補助要去哪裡申請？10115": "Wo kann ich Wohngeld beantragen? 10115",
-    "住房補助要去哪裡申請？": "Wo kann ich Wohngeld beantragen?",
-    "兒童金可以補領嗎？": "Kann man Kindergeld nachträglich bekommen?",
-    "Where do I get housing benefit? 10115": "Wo bekomme ich Wohngeld? 10115",
-}
+from turn_plan import Found, Kind, TurnPlanner
 
 
 @pytest.fixture()
 def client(monkeypatch):
     main.limiter.enabled = False
     # Module-level cache: without this, a question asked in one test would
-    # be answered from the cache in the next and never reach fake_query.
+    # be answered from the cache in the next and never reach fake_answer.
     main.answer_cache.clear()
 
-    calls = {"query_count": 0}
+    calls = {"answer_count": 0}
 
-    def fake_query(message, language="de", topic=None, authority=None,
-                   ask_for_plz=False, ask_for_topic=False, authority_missing=False,
-                   history=None, meta_only=False, chitchat=False,
-                   retrieval_query=None, query_de=None):
-        calls["query_count"] += 1
-        calls["query"] = {
-            "message": message, "language": language, "topic": topic,
-            "authority": authority, "ask_for_plz": ask_for_plz,
-            "ask_for_topic": ask_for_topic,
-            "authority_missing": authority_missing, "meta_only": meta_only,
-            "chitchat": chitchat, "retrieval_query": retrieval_query,
-            "query_de": query_de,
-        }
+    def fake_answer(plan):
+        calls["answer_count"] += 1
+        calls["plan"] = plan
+        if plan.kind is not Kind.ANSWER:
+            return "STUB ANSWER", []
         sources = [{"title": "Doc", "url": "https://example.org"}]
-        if authority is not None:
-            sources.insert(0, authority.source())
+        if isinstance(plan.authority, Found):
+            sources.insert(0, plan.authority.result.source())
         return "STUB ANSWER", sources
 
-    def fake_find(plz, query, topic=None):
-        calls["find"] = {"plz": plz, "query": query, "topic": topic}
-        if plz == "99999":
-            return None
-        return BehoerdeResult(authority_name="Jobcenter Test", service_name="X",
-                              website="https://jc.example")
+    class FakeFinder:
+        def find(self, plz, query, topic=None):
+            return BehoerdeResult(authority_name="Jobcenter Test", service_name="X",
+                                  website="https://jc.example")
 
-    def fake_to_german(text, language="de"):
-        calls.setdefault("translated", []).append(text)
-        return TRANSLATIONS.get(text, text)
-
-    monkeypatch.setattr(main.rag_pipeline, "query", fake_query)
-    monkeypatch.setattr(main.rag_pipeline, "to_german", fake_to_german)
-    monkeypatch.setattr(main.behoerde_finder, "find", fake_find)
+    monkeypatch.setattr(main.rag_pipeline, "answer", fake_answer)
+    monkeypatch.setattr(
+        main, "turn_planner",
+        TurnPlanner(main.query_router, FakeFinder(), lambda text, language: text),
+    )
     test_client = TestClient(main.app)
     test_client.calls = calls
     return test_client
@@ -70,130 +52,34 @@ class TestChat:
     def test_basic_question(self, client):
         r = client.post("/chat", json={"message": "Was ist Bürgergeld?"})
         assert r.status_code == 200
-        body = r.json()
-        assert body["answer"] == "STUB ANSWER"
-        assert body["topic"] == "buergergeld"
-        assert body["sources"] == [{"title": "Doc", "url": "https://example.org"}]
-        assert "find" not in client.calls  # no authority intent → no PVOG call
+        assert r.json() == {
+            "answer": "STUB ANSWER",
+            "topic": "buergergeld",
+            "sources": [{"title": "Doc", "url": "https://example.org"}],
+        }
 
-    def test_authority_intent_with_plz_calls_finder(self, client):
-        r = client.post("/chat", json={"message": "Wo ist mein Jobcenter? Ich wohne in 81667"})
-        assert r.status_code == 200
-        assert client.calls["find"]["plz"] == "81667"
-        assert r.json()["sources"][0]["title"] == "Jobcenter Test — X"
-
-    def test_authority_intent_without_plz_asks_for_it(self, client):
-        client.post("/chat", json={"message": "Wo beantrage ich Kindergeld?"})
-        assert client.calls["query"]["ask_for_plz"] is True
-        assert "find" not in client.calls
-
-    def test_bare_plz_followup_uses_history(self, client):
+    def test_request_reaches_the_plan(self, client):
         history = [
             {"role": "user", "content": "Wo beantrage ich Kindergeld?"},
             {"role": "assistant", "content": "Bitte nennen Sie Ihre Postleitzahl."},
         ]
-        r = client.post("/chat", json={"message": "10115", "history": history})
-        assert r.status_code == 200
-        assert client.calls["find"]["plz"] == "10115"
-        # topic and lookup text come from the history, not the bare PLZ
-        assert client.calls["find"]["topic"] == "kindergeld"
-        assert client.calls["find"]["query"] == "Wo beantrage ich Kindergeld?"
+        r = client.post("/chat", json={"message": "10115", "language": "zh-Hant", "history": history})
+        plan = client.calls["plan"]
+        assert (plan.message, plan.language, plan.history) == ("10115", "zh-Hant", tuple(history))
+        assert r.json()["topic"] == "kindergeld"  # response topic is the plan's
+        assert r.json()["sources"][0]["title"] == "Jobcenter Test — X"
 
-    def test_short_followup_enriches_retrieval_with_history(self, client):
-        # "say that in Chinese" carries no searchable meaning — retrieval
-        # must reuse the previous question (the reported bug: random chunks).
-        history = [
-            {"role": "user", "content": "Wer bekommt Kindergeld?"},
-            {"role": "assistant", "content": "Kindergeld bekommen Eltern …"},
-        ]
-        client.post("/chat", json={"message": "用中文講一次", "history": history})
-        q = client.calls["query"]
-        assert q["retrieval_query"] == "Wer bekommt Kindergeld?\n用中文講一次"
-        assert q["message"] == "用中文講一次"  # prompt still shows the real message
-
-    def test_fresh_topical_question_keeps_plain_retrieval(self, client):
-        client.post("/chat", json={"message": "Was ist Bürgergeld?"})
-        assert client.calls["query"]["retrieval_query"] is None
-
-    def test_failed_lookup_sets_authority_missing(self, client):
-        client.post("/chat", json={"message": "Wo ist mein Jobcenter? PLZ 99999"})
-        assert client.calls["query"]["authority_missing"] is True
-        assert client.calls["query"]["ask_for_topic"] is False
-
-    def test_failed_lookup_without_a_topic_asks_what_it_is_about(self, client):
-        # A postcode alone does not determine a Behörde — responsibility is
-        # per service. "Which office is responsible? 10115" used to be
-        # answered with whatever PVOG's full-text search ranked first.
-        # 99999 is the stub's "PVOG found nothing" postcode.
-        client.post("/chat", json={"message": "Which office is responsible? 99999"})
-        assert client.calls["query"]["topic"] == "allgemein"
-        assert client.calls["query"]["ask_for_topic"] is True
-        assert client.calls["query"]["authority_missing"] is False
-
-    def test_non_german_authority_question_routes_on_translation(self, client):
-        # No Chinese keywords exist — the German translation carries both
-        # the topic and the where-to-apply intent.
-        r = client.post("/chat", json={"message": "住房補助要去哪裡申請？10115", "language": "zh-Hant"})
-        assert r.status_code == 200
-        assert r.json()["topic"] == "wohngeld"
-        assert client.calls["find"] == {
-            "plz": "10115", "query": "Wo kann ich Wohngeld beantragen? 10115", "topic": "wohngeld",
-        }
-        # retrieval reuses the translation instead of paying for it again
-        assert client.calls["query"]["query_de"] == "Wo kann ich Wohngeld beantragen? 10115"
-        assert client.calls["translated"] == ["住房補助要去哪裡申請？10115"]
-
-    def test_english_question_routes_on_translation(self, client):
-        # "housing benefit" is no topic keyword and "where do I get" no
-        # intent phrase — only the German translation carries both.
-        r = client.post("/chat", json={"message": "Where do I get housing benefit? 10115", "language": "en"})
-        assert r.json()["topic"] == "wohngeld"
-        assert client.calls["find"] == {
-            "plz": "10115", "query": "Wo bekomme ich Wohngeld? 10115", "topic": "wohngeld",
-        }
-
-    def test_non_german_authority_question_without_plz_asks_for_it(self, client):
-        client.post("/chat", json={"message": "住房補助要去哪裡申請？", "language": "zh-Hant"})
-        assert client.calls["query"]["ask_for_plz"] is True
-        assert "find" not in client.calls
-
-    def test_bare_plz_followup_to_non_german_question(self, client):
-        history = [
-            {"role": "user", "content": "住房補助要去哪裡申請？"},
-            {"role": "assistant", "content": "請告訴我您的郵遞區號。"},
-        ]
-        client.post("/chat", json={"message": "10115", "history": history, "language": "zh-Hant"})
-        assert client.calls["find"] == {
-            "plz": "10115", "query": "Wo kann ich Wohngeld beantragen?", "topic": "wohngeld",
-        }
-
-    def test_non_german_knowledge_question_does_not_trigger_lookup(self, client):
-        r = client.post("/chat", json={"message": "兒童金可以補領嗎？", "language": "zh-Hant"})
-        assert r.json()["topic"] == "kindergeld"
-        assert "find" not in client.calls
-        assert client.calls["query"]["ask_for_plz"] is False
-
-    def test_meta_question_skips_retrieval_and_has_no_sources(self, client):
+    def test_meta_question_has_no_sources(self, client):
         r = client.post("/chat", json={"message": "Welche Fragen kann ich dir stellen?"})
         assert r.status_code == 200
         assert r.json()["sources"] == []
-        assert client.calls["query"]["meta_only"] is True
-
-    def test_chitchat_skips_retrieval_and_has_no_sources(self, client):
-        r = client.post("/chat", json={"message": "Danke!"})
-        assert r.status_code == 200
-        assert r.json()["sources"] == []
-        assert client.calls["query"]["chitchat"] is True
-
-    def test_question_starting_with_greeting_is_not_chitchat(self, client):
-        client.post("/chat", json={"message": "Hi, wo ist mein Jobcenter?"})
-        assert client.calls["query"]["chitchat"] is False
+        assert r.json()["topic"] == "allgemein"
 
     def test_index_not_ready_maps_to_503(self, client, monkeypatch):
-        def raising_query(*args, **kwargs):
+        def raising_answer(plan):
             raise IndexNotReadyError("missing")
 
-        monkeypatch.setattr(main.rag_pipeline, "query", raising_query)
+        monkeypatch.setattr(main.rag_pipeline, "answer", raising_answer)
         r = client.post("/chat", json={"message": "Was ist Bürgergeld?"})
         assert r.status_code == 503
         assert r.json() == {"error": "Index not yet available. Please try again later."}
@@ -287,12 +173,12 @@ class TestAnswerCache:
         first = client.post("/chat", json={"message": "Was ist Bürgergeld?"})
         second = client.post("/chat", json={"message": " Was ist  Bürgergeld? "})
         assert second.json() == first.json()
-        assert client.calls["query_count"] == 1
+        assert client.calls["answer_count"] == 1
 
     def test_language_is_part_of_the_key(self, client):
         client.post("/chat", json={"message": "Was ist Bürgergeld?", "language": "de"})
         client.post("/chat", json={"message": "Was ist Bürgergeld?", "language": "en"})
-        assert client.calls["query_count"] == 2
+        assert client.calls["answer_count"] == 2
 
     def test_turns_with_history_are_never_cached(self, client):
         history = [
@@ -301,22 +187,22 @@ class TestAnswerCache:
         ]
         for _ in range(2):
             client.post("/chat", json={"message": "Und wie viel?", "history": history})
-        assert client.calls["query_count"] == 2
+        assert client.calls["answer_count"] == 2
 
     def test_no_cache_header_reaches_the_pipeline(self, client):
         client.post("/chat", json={"message": "Was ist Bürgergeld?"})
         client.post("/chat", json={"message": "Was ist Bürgergeld?"},
                     headers={"Cache-Control": "no-cache"})
-        assert client.calls["query_count"] == 2
+        assert client.calls["answer_count"] == 2
 
     def test_errors_are_not_cached(self, client, monkeypatch):
-        def raising_query(*args, **kwargs):
+        def raising_answer(plan):
             raise IndexNotReadyError("missing")
 
-        original = main.rag_pipeline.query
-        monkeypatch.setattr(main.rag_pipeline, "query", raising_query)
+        original = main.rag_pipeline.answer
+        monkeypatch.setattr(main.rag_pipeline, "answer", raising_answer)
         assert client.post("/chat", json={"message": "Was ist Bürgergeld?"}).status_code == 503
-        monkeypatch.setattr(main.rag_pipeline, "query", original)
+        monkeypatch.setattr(main.rag_pipeline, "answer", original)
         assert client.post("/chat", json={"message": "Was ist Bürgergeld?"}).status_code == 200
 
 
@@ -326,14 +212,14 @@ class TestDailyBudget:
         r = client.post("/chat", json={"message": "Was ist Bürgergeld?"})
         assert r.status_code == 503
         assert r.json()["code"] == "daily_budget_exhausted"
-        assert client.calls["query_count"] == 0
+        assert client.calls["answer_count"] == 0
 
     def test_cached_answers_still_served_when_exhausted(self, client, monkeypatch):
         client.post("/chat", json={"message": "Was ist Bürgergeld?"})
         monkeypatch.setattr(main.daily_budget, "exhausted", lambda: True)
         r = client.post("/chat", json={"message": "Was ist Bürgergeld?"})
         assert r.status_code == 200
-        assert client.calls["query_count"] == 1
+        assert client.calls["answer_count"] == 1
 
 
 class TestFeedback:
