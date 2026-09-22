@@ -26,7 +26,7 @@ def resolve_database_url() -> str:
 
 def resolve_feedback_database_url() -> str:
     """Feedback lives in its own sqlite file, NOT in metadata.db: the index
-    upload (scripts/upload-index.sh) replaces metadata.db wholesale on the
+    upload (scripts/ship-index.sh) replaces metadata.db wholesale on the
     volume, which would silently wipe feedback stored alongside the chunks.
     """
     data_dir = os.environ.get("DATA_DIR", "data")

@@ -4,7 +4,9 @@
 #
 # The current data/faiss_index.bin + metadata.db are kept as
 # *.bak-<timestamp> first. Afterwards ship it to Railway:
-#   scripts/upload-index.sh && railway redeploy
+#   scripts/ship-index.sh   (uploads, swaps and redeploys)
+# The weekly crawl already does this on its own when the index changed;
+# by hand this is for rollbacks to an older run or a missing secret.
 #
 # Needs an authenticated gh CLI (gh auth login).
 #

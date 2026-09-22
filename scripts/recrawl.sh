@@ -9,7 +9,7 @@
 # `python build_index.py --full` forces one).
 #
 # Usage: scripts/recrawl.sh            # needs OPENAI_API_KEY (or backend/.env)
-# Afterwards: scripts/upload-index.sh  # push data/ to the Railway volume
+# Afterwards: scripts/ship-index.sh  # push data/ to the Railway volume + redeploy
 set -euo pipefail
 cd "$(dirname "$0")/../crawler"
 

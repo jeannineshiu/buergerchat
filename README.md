@@ -83,7 +83,7 @@ Topic selection follows the documented demand of migration counseling services (
 - **Reranking** (`RERANK=1`, on in production): the vector search widens to 30 candidates and an LLM appends up to 3 extra picks *after* the untouched top-5. Union, not swap — swapping was zero-sum, the union took golden retrieval recall to 100% in all three eval languages, at one extra chat call per query
 - **Authority finder**: live queries against the public PVOG Suchdienst API (PLZ → ARS → service → responsible organisation unit)
 - **Crawlers**: sitemap-driven (or restricted BFS), honor robots.txt including per-site crawl delays, re-runnable incrementally
-- **Deployment**: two Docker services on Railway; index artifacts live on a volume (`/data`), uploaded via `scripts/upload-index.sh`
+- **Deployment**: two Docker services on Railway; index artifacts live on a volume (`/data`), shipped by the weekly crawl via `scripts/ship-index.sh` (upload, swap, redeploy)
 
 ## Getting started (local)
 
