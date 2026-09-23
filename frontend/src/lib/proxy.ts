@@ -14,6 +14,10 @@ const ALLOWED: Record<string, "GET" | "POST"> = {
   "feedback/message": "POST",
   "feedback/session": "POST",
   health: "GET",
+  // The daily smoke test's free check — it asks the backend whether the
+  // models /chat needs still exist, and goes through this proxy so a broken
+  // BACKEND_URL fails it too.
+  "health/model": "GET",
 };
 
 // /chat runs retrieval, an optional LLM rerank and the answer completion:

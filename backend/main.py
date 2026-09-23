@@ -239,6 +239,29 @@ def health_check():
     return {"status": "degraded", "index": "missing"}
 
 
+@app.get("/health/model")
+@limiter.limit("6/minute")
+def health_model(request: Request):
+    """Is the LLM half of /chat still working? /health only knows about the
+    FAISS index — on 2026-09-09 it reported `ok / index loaded` for hours
+    while every /chat call 500'd, because OpenAI had deprecated the default
+    CHAT_MODEL. This asks OpenAI whether each model still exists and this
+    key may use it, which catches that class of failure (and an expired or
+    revoked key) without spending anything: the models endpoint is free.
+
+    It cannot see a broken prompt, empty retrieval or an exhausted balance —
+    the daily smoke test runs this, the weekly one asks real questions.
+    Rate-limited because it makes an upstream call per hit.
+    """
+    try:
+        models = rag_pipeline.check_models()
+    except Exception as exc:  # noqa: BLE001 - any failure is a failed check
+        detail = f"{type(exc).__name__}: {exc}"[:300]
+        print(f"[health] model check failed: {detail}", file=sys.stderr)
+        return JSONResponse(status_code=503, content={"status": "error", "detail": detail})
+    return {"status": "ok", "models": models}
+
+
 @app.get("/")
 def root():
     return {"service": "buergerchat-backend"}

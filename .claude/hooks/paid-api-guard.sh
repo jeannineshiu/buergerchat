@@ -9,8 +9,9 @@
 #
 # Matches (python immediately followed by the script, so "py_compile" and
 # grep/edit commands that merely mention the file don't prompt):
-#   - evals/run_evals.py ... --yes   (without --yes it only prints an estimate)
-#   - scripts/smoke_test.py          (real /chat calls against production)
+#   - evals/run_evals.py ... --yes      (without --yes it only prints an estimate)
+#   - scripts/smoke_test.py --mode full (real /chat calls against production;
+#     the default free mode only hits OpenAI's unbilled models endpoint)
 # Not covered: ad-hoc scripts that import rag.py — that stays a memory rule.
 
 cmd=$(jq -r '.tool_input.command // ""')
@@ -18,7 +19,7 @@ cmd=$(jq -r '.tool_input.command // ""')
 reason=""
 if printf '%s' "$cmd" | grep -Eq 'python[0-9.]*[[:space:]]+([^[:space:];&|]*/)?run_evals\.py[^;&|]*--yes'; then
   reason="Paid OpenAI call: golden eval with --yes. Run it without --yes first to see the cost estimate."
-elif printf '%s' "$cmd" | grep -Eq 'python[0-9.]*[[:space:]]+([^[:space:];&|]*/)?smoke_test\.py'; then
+elif printf '%s' "$cmd" | grep -Eq '(SMOKE_MODE=full[^;&|]*)?python[0-9.]*[[:space:]]+([^[:space:];&|]*/)?smoke_test\.py[^;&|]*--mode[[:space:]=]+full|SMOKE_MODE=full[^;&|]*python[0-9.]*[[:space:]]+([^[:space:];&|]*/)?smoke_test\.py'; then
   reason="Paid OpenAI call: production smoke test (~\$0.05 per question, counts against DAILY_BUDGET_USD)."
 fi
 

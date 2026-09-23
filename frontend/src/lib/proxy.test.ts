@@ -78,6 +78,18 @@ describe("proxyToBackend", () => {
     expect(fetchMock.mock.calls[0][1].body).toBeUndefined();
   });
 
+  it("proxies GET /health/model for the free smoke test", async () => {
+    const fetchMock = upstream(200, '{"status":"ok","models":{"gpt-5.5":"ok"}}');
+    const res = await proxyToBackend(
+      new Request("https://frontend.example/api/health/model"),
+      "health/model",
+      BASE,
+      fetchMock,
+    );
+    expect(res.status).toBe(200);
+    expect(fetchMock.mock.calls[0][0]).toBe(`${BASE}/health/model`);
+  });
+
   it("refuses paths outside the public API", async () => {
     const fetchMock = upstream();
     for (const path of ["docs", "openapi.json", "", "chat/../docs"]) {

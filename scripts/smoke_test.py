@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Smoke-test the deployed app by asking it real questions.
+"""Smoke-test the deployed app: is it up, and is its LLM half still working?
 
 Motivated by the 2026-09-09 outage: OpenAI deprecated the model that was
 `CHAT_MODEL`'s default, so every /chat call 500'd for hours while nothing
@@ -16,15 +16,26 @@ service fails it too. Pointing --base-url at the backend itself also works
 Stdlib only, no dependencies: it runs from a bare GitHub Actions runner
 (see .github/workflows/smoke-test.yml) and from any local shell.
 
-    python scripts/smoke_test.py
+    python scripts/smoke_test.py                 # free: costs nothing
+    python scripts/smoke_test.py --mode full     # asks real questions, ~$0.10
     python scripts/smoke_test.py --base-url http://localhost:3000/api
     python scripts/smoke_test.py --base-url http://localhost:8000   # backend only
 
 Exit code 0 = healthy, 1 = something is broken (details on stderr).
-Each run costs a couple of OpenAI calls per query — with RERANK=1 that is
-one rerank plus one answer completion, about $0.05 per query — and counts
-against the backend's DAILY_BUDGET_USD like any visitor, so keep the query
-list short and the cron interval sane (once a day: ~$0.10 of a $0.50 day).
+
+Two modes, because the checks differ in price by three orders of magnitude:
+
+  free (default) — /health and /health/model. The latter asks OpenAI
+      whether every model /chat needs still exists and this key may use
+      it; OpenAI does not bill the models endpoint, so this is $0 and can
+      run as often as you like. It catches the 2026-09-09 failure exactly
+      (deprecated model → 404 on every call) plus a dead API key, but it
+      never reaches retrieval or a prompt.
+  full — adds one real /chat per query. With RERANK=1 that is one rerank
+      plus one answer completion, about $0.05 per query, and it counts
+      against the backend's DAILY_BUDGET_USD like any visitor. It is the
+      only mode that proves an actual answer with sources comes back, so
+      keep the query list short and run it weekly, not hourly.
 """
 
 import argparse
@@ -108,6 +119,19 @@ def check_health(base_url):
     return "/health: ok, index loaded"
 
 
+def check_model(base_url):
+    """Free: the models endpoint is not billed, so this costs nothing."""
+    _, body = _request(f"{base_url}/health/model", timeout=60)
+    if not isinstance(body, dict):
+        raise SmokeFailure("/health/model did not return JSON")
+    if body.get("status") != "ok":
+        raise SmokeFailure(f"/health/model reports {body}")
+    models = body.get("models") or {}
+    if not models:
+        raise SmokeFailure("/health/model checked no models")
+    return f"/health/model: ok ({', '.join(models)})"
+
+
 def check_chat(base_url, query):
     _, body = _request(
         f"{base_url}/chat",
@@ -135,16 +159,20 @@ def check_chat(base_url, query):
     return f"{label}: {len(answer)} chars, {len(sources)} sources, topic {topic}"
 
 
-def run_checks(base_url):
+def run_checks(base_url, mode="free"):
     """Run every check, collecting failures instead of stopping at the first."""
-    passed, failed = [], []
-    for name, check in [
+    checks = [
         ("health", lambda: check_health(base_url)),
-        *[
+        ("model", lambda: check_model(base_url)),
+    ]
+    if mode == "full":
+        checks += [
             (f"chat-{q['language']}", (lambda q=q: check_chat(base_url, q)))
             for q in QUERIES
-        ],
-    ]:
+        ]
+
+    passed, failed = [], []
+    for name, check in checks:
         try:
             passed.append(check())
         except SmokeFailure as exc:
@@ -160,6 +188,13 @@ def main():
         help="API base URL: the frontend's /api proxy or the backend (env: SMOKE_BASE_URL)",
     )
     parser.add_argument(
+        "--mode",
+        choices=("free", "full"),
+        default=os.environ.get("SMOKE_MODE", "free"),
+        help="free: /health + /health/model, costs nothing. "
+        "full: also asks real questions, ~$0.05 per query (env: SMOKE_MODE)",
+    )
+    parser.add_argument(
         "--retry-delay",
         type=int,
         default=30,
@@ -168,8 +203,8 @@ def main():
     args = parser.parse_args()
     base_url = args.base_url.rstrip("/")
 
-    print(f"Smoke-testing {base_url}", flush=True)
-    passed, failed = run_checks(base_url)
+    print(f"Smoke-testing {base_url} (mode: {args.mode})", flush=True)
+    passed, failed = run_checks(base_url, args.mode)
 
     # A deploy restart or a blip should not page anyone; a real breakage
     # survives one retry.
@@ -178,7 +213,7 @@ def main():
         for failure in failed:
             print(f"  first attempt: {failure}", flush=True)
         time.sleep(args.retry_delay)
-        passed, failed = run_checks(base_url)
+        passed, failed = run_checks(base_url, args.mode)
 
     for line in passed:
         print(f"PASS  {line}")

@@ -290,6 +290,26 @@ class RAGPipeline:
         if not self.load():
             raise IndexNotReadyError(str(resolve_faiss_path()))
 
+    def check_models(self) -> dict[str, str]:
+        """Ask OpenAI whether every model /chat depends on still exists and
+        this key may use it. Returns {model: "ok"}; raises on the first one
+        that fails.
+
+        This is the cheap half of the smoke test (scripts/smoke_test.py
+        --mode free): the 2026-09-09 outage was a deprecated CHAT_MODEL
+        answering every /chat call with 404 model_not_found, and
+        models.retrieve sees exactly that — while the models endpoint is
+        not billed, so a daily check costs nothing. It does NOT exercise
+        retrieval or answer quality; only a real /chat does (--mode full).
+        """
+        # dict, not set: keeps CHAT_MODEL first and the order stable, so the
+        # failure a caller reports is always the most important one.
+        models = dict.fromkeys([CHAT_MODEL, RERANK_MODEL, EMBEDDING_MODEL])
+        for model in models:
+            self.client.models.retrieve(model)
+            models[model] = "ok"
+        return models
+
     def _track(self, model: str, response):
         if self._on_usage is not None:
             self._on_usage(model, getattr(response, "usage", None))

@@ -68,10 +68,26 @@ class FakeChatCompletions:
         return type("Completion", (), {"choices": [choice]})()
 
 
+class FakeModels:
+    """client.models.retrieve — the free liveness probe behind /health/model.
+    Add a name to `missing` to simulate a model OpenAI has deprecated."""
+
+    def __init__(self):
+        self.retrieved = []
+        self.missing: set[str] = set()
+
+    def retrieve(self, model: str):
+        self.retrieved.append(model)
+        if model in self.missing:
+            raise RuntimeError(f"model_not_found: {model}")
+        return type("Model", (), {"id": model})()
+
+
 class FakeOpenAI:
     def __init__(self):
         self.embeddings = FakeEmbeddings()
         self.chat = type("Chat", (), {"completions": FakeChatCompletions()})()
+        self.models = FakeModels()
 
 
 @pytest.fixture()

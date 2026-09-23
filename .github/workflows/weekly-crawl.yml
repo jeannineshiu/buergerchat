@@ -116,10 +116,12 @@ jobs:
           npm install -g @railway/cli@5.59.0
           bash scripts/ship-index.sh
 
-      # ~$0.10 of the daily OpenAI budget; only after an actual ship.
+      # ~$0.10 of the daily OpenAI budget; only after an actual ship. Full
+      # mode on purpose: a fresh index is exactly when retrieval can break,
+      # which the free model check cannot see.
       - name: Smoke-test production
         if: steps.build.outputs.changed == 'true'
-        run: python scripts/smoke_test.py
+        run: python scripts/smoke_test.py --mode full
 
       - name: Upload crawl log
         if: always()

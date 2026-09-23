@@ -347,6 +347,36 @@ class TestUsageReporting:
         assert answer == "STUB ANSWER"
 
 
+class TestModelCheck:
+    """The free half of the smoke test: is every model /chat needs still
+    there? models.retrieve is not billed, so this may run daily."""
+
+    def test_checks_every_model_chat_depends_on(self, pipeline):
+        assert pipeline.check_models() == {
+            rag.CHAT_MODEL: "ok",
+            rag.EMBEDDING_MODEL: "ok",
+        }
+        # Same model twice (RERANK_MODEL defaults to CHAT_MODEL) = one call.
+        assert pipeline.client.models.retrieved == [rag.CHAT_MODEL, rag.EMBEDDING_MODEL]
+
+    def test_checks_a_separate_rerank_model_too(self, pipeline, monkeypatch):
+        monkeypatch.setattr(rag, "RERANK_MODEL", "gpt-5.4-mini")
+        assert "gpt-5.4-mini" in pipeline.check_models()
+
+    def test_raises_when_a_model_is_gone(self, pipeline):
+        # 2026-09-09: CHAT_MODEL was deprecated and every /chat call 404'd.
+        pipeline.client.models.missing = {rag.CHAT_MODEL}
+        with pytest.raises(RuntimeError, match="model_not_found"):
+            pipeline.check_models()
+
+    def test_costs_nothing(self, pipeline):
+        """No chat completion, no embedding — nothing billable."""
+        spent = []
+        pipeline._on_usage = lambda model, usage: spent.append(model)
+        pipeline.check_models()
+        assert spent == []
+
+
 class TestHelpers:
     def test_language_directive_german_is_plain(self):
         assert language_directive("de") == "Antworte auf Deutsch."

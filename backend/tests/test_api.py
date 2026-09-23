@@ -269,3 +269,23 @@ class TestHealth:
         r = client.get("/health")
         assert r.status_code == 200
         assert r.json() == {"status": "ok", "index": "loaded"}
+
+    def test_model_check_reports_every_model(self, client, monkeypatch):
+        monkeypatch.setattr(
+            main.rag_pipeline, "check_models", lambda: {"gpt-5.5": "ok", "emb": "ok"}
+        )
+        r = client.get("/health/model")
+        assert r.status_code == 200
+        assert r.json() == {"status": "ok", "models": {"gpt-5.5": "ok", "emb": "ok"}}
+
+    def test_model_check_503_when_a_model_is_gone(self, client, monkeypatch):
+        # The 2026-09-09 shape: the model is deprecated, so every call 404s
+        # while /health still reports the index is loaded.
+        def gone():
+            raise RuntimeError("model_not_found: gpt-5.3-chat-latest")
+
+        monkeypatch.setattr(main.rag_pipeline, "check_models", gone)
+        r = client.get("/health/model")
+        assert r.status_code == 503
+        assert r.json()["status"] == "error"
+        assert "model_not_found" in r.json()["detail"]

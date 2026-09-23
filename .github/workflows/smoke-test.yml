@@ -1,11 +1,22 @@
-# Periodic end-to-end check of the deployed app: it asks /chat real
-# questions through the frontend's /api proxy (the path a browser takes)
-# and verifies a real answer with sources comes back.
+# Periodic end-to-end check of the deployed app.
 #
-# Why not /health: on 2026-09-09 every /chat call 500'd for hours because
-# OpenAI had deprecated the default CHAT_MODEL, while /health kept
+# Why not /health alone: on 2026-09-09 every /chat call 500'd for hours
+# because OpenAI had deprecated the default CHAT_MODEL, while /health kept
 # reporting `ok / index loaded` — it only knows about the FAISS index.
-# Only a call that reaches the LLM catches that.
+#
+# Two schedules, because the checks differ wildly in price:
+#   daily  (free) — /health + /health/model. The model check asks OpenAI
+#     whether every model /chat needs still exists and the production key
+#     may use it. OpenAI does not bill the models endpoint, so this costs
+#     nothing and catches the 2026-09-09 failure exactly, plus a dead key.
+#   weekly (full) — also asks /chat two real questions through the
+#     frontend's /api proxy (the path a browser takes) and verifies a real
+#     answer with sources comes back. ~$0.10 of the backend's $0.50 daily
+#     OpenAI budget; this is the only check that covers retrieval, the
+#     answer prompt and the router. It ran daily until 2026-09-23 (~$3/mo).
+#
+# The weekly-crawl workflow runs the full mode too, but only in weeks where
+# the index actually changed — this cron is what guarantees one per week.
 #
 # No secrets needed (the endpoint is public). GitHub emails the repo owner
 # when a scheduled workflow fails — and disables schedules in a repo with
@@ -14,10 +25,15 @@ name: smoke-test
 
 on:
   schedule:
-    # Once a day: each run costs ~$0.10 of the backend's $0.50/day budget
-    # (DAILY_BUDGET_USD); every 6 hours ate 80% of it.
-    - cron: "17 6 * * *" # 06:17 UTC, off the hour to dodge the cron rush
+    - cron: "17 6 * * *" # daily 06:17 UTC, free mode; off the hour to dodge the cron rush
+    - cron: "47 6 * * 1" # Mondays 06:47 UTC, full mode (~$0.10)
   workflow_dispatch:
+    inputs:
+      mode:
+        description: "free (costs nothing) or full (two real /chat questions, ~$0.10)"
+        type: choice
+        default: free
+        options: [free, full]
 
 jobs:
   smoke-test:
@@ -30,6 +46,15 @@ jobs:
         with:
           python-version: "3.11"
 
+      # Anything but the weekly cron and an explicit `full` dispatch stays free.
+      - name: Pick mode
+        id: pick
+        run: |
+          mode="${{ github.event.inputs.mode || 'free' }}"
+          if [ "${{ github.event.schedule }}" = "47 6 * * 1" ]; then mode=full; fi
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "running in $mode mode"
+
       # Stdlib only — nothing to install.
-      - name: Ask the deployed app real questions
-        run: python scripts/smoke_test.py
+      - name: Check the deployed app
+        run: python scripts/smoke_test.py --mode "${{ steps.pick.outputs.mode }}"
