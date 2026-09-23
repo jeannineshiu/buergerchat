@@ -76,7 +76,7 @@ npm run dev     # http://localhost:3000; its /api proxy expects the backend on :
 ### Tests
 
 ```bash
-cd backend && pip install -r requirements-dev.txt && python -m pytest tests/   # 145 tests
+cd backend && pip install -r requirements-dev.txt && python -m pytest tests/   # 151 tests
 cd crawler && python -m pytest tests/                                          # 54 tests
 cd frontend && npm test                                                        # 49 tests (vitest)
 ```

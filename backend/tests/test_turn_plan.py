@@ -168,3 +168,58 @@ class TestRetrievalQuery:
 
     def test_fresh_topical_question_keeps_plain_retrieval(self, planner):
         assert planner.plan("Was ist Bürgergeld?").retrieval_query is None
+
+    def test_long_message_is_not_treated_as_a_follow_up(self):
+        # Only short messages are assumed to lean on the previous question;
+        # a long one carries enough text to retrieve on by itself (80 chars).
+        planner = TurnPlanner(QueryRouter(), FakeFinder(), lambda text, language: text)
+        history = exchange("Wer bekommt Kindergeld?", "Eltern …")
+        long_message = "Mir wurde gesagt dass ich das dort beantragen muss aber ich verstehe es nicht"
+        assert len(long_message) <= 80
+        assert planner.plan(long_message, history=history).retrieval_query is not None
+        assert planner.plan(long_message + " ganz", history=history).retrieval_query is None
+
+
+class TestTranslationCost:
+    """Every translation is a model call, so the plan pays for as few as it
+    can. These rules had no test before the 2026-09-22 refactor."""
+
+    def test_only_the_last_two_user_turns_are_translated(self, planner, translated):
+        # An older turn's topic is read untranslated — a third-from-last
+        # question in another script therefore does not decide the topic.
+        history = (
+            exchange("住房補助要去哪裡申請？", "請告訴我您的郵遞區號。")
+            + exchange("Und dann?", "Dann …")
+            + exchange("Und weiter?", "Weiter …")
+        )
+        plan = planner.plan("Und jetzt?", history=history)
+        assert "住房補助要去哪裡申請？" not in translated
+        assert plan.topic == "allgemein"
+
+    def test_history_intent_is_translated_only_once_a_plz_is_known(self, planner, finder, translated):
+        # Without a PLZ the lookup can't run anyway, so paying to find the
+        # intent in a past turn buys nothing.
+        history = exchange("住房補助要去哪裡申請？", "請告訴我您的郵遞區號。")
+        plan = planner.plan("Wie hoch ist das Kindergeld?", history=history)
+        assert translated == ["Wie hoch ist das Kindergeld?"]  # history not translated
+        assert plan.authority == NotRequested()
+        assert finder.calls == []
+
+    def test_each_text_is_translated_once_per_turn(self, planner, finder, translated):
+        # The message drives topic, authority intent and the PVOG lookup —
+        # one translation, reused three times.
+        planner.plan("住房補助要去哪裡申請？10115", language="zh-Hant")
+        assert translated == ["住房補助要去哪裡申請？10115"]
+        assert len(finder.calls) == 1
+
+
+class TestPlzFallback:
+    def test_plz_from_an_earlier_message_is_used(self, planner, finder):
+        history = exchange("Ich wohne in 10115", "Danke für die Angabe.")
+        planner.plan("Wo ist mein Jobcenter?", history=history)
+        assert finder.calls[0]["plz"] == "10115"
+
+    def test_the_newest_plz_wins(self, planner, finder):
+        history = exchange("Ich wohne in 10115", "…") + exchange("Ich bin nach 80331 gezogen", "…")
+        planner.plan("Wo ist mein Jobcenter?", history=history)
+        assert finder.calls[0]["plz"] == "80331"
