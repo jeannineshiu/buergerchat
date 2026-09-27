@@ -84,13 +84,16 @@ def check_answer(answer: str, sources: list[dict], item: dict, language: str) ->
         domain in (s.get("url") or "") for s in sources for domain in item["sources"]
     )
     script_ok = not FORBIDDEN_SCRIPTS.search(answer)
+    # The QUELLEN line and [n] block numbers are for the backend only.
+    hidden_ok = "QUELLEN" not in answer.upper() and not re.search(r"\[\d+\]", answer)
     language_ok = answer_language_ok(answer, language)
     return {
         "facts": facts_ok,
         "source": source_ok,
         "script": script_ok,
+        "hidden": hidden_ok,
         "language": language_ok,
-        "pass": facts_ok and source_ok and script_ok and language_ok,
+        "pass": facts_ok and source_ok and script_ok and hidden_ok and language_ok,
     }
 
 
@@ -242,7 +245,7 @@ def main():
                 failed = [k for k, v in result.items() if k != "pass" and not v]
                 failures.append(f"  FAIL [{lang}] {item['id']}: {', '.join(failed)}")
 
-    print_summary("Answer eval (facts + source + script + language):", answer_pass)
+    print_summary("Answer eval (facts + source + script + hidden + language):", answer_pass)
     if failures:
         print("\nAnswer failures:")
         print("\n".join(failures))

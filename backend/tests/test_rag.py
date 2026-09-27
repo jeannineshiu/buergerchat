@@ -2,6 +2,8 @@
 fake OpenAI client — exercises lazy loading, retrieval wiring, prompt
 assembly and source ordering without network."""
 
+from types import SimpleNamespace
+
 import faiss
 import numpy as np
 import pytest
@@ -473,3 +475,89 @@ class TestRerank:
         chunks = pipeline.retrieve("Wie hoch ist das Kindergeld?")
         assert len(chunks) <= rag.TOP_K
         assert pipeline.client.chat.completions.calls == []
+
+
+def reply_with(pipeline, *replies):
+    """Make the chat client answer with `replies` in order; return the
+    list of message lists it was called with."""
+    answers = iter(replies)
+    calls = []
+
+    def fake_create(model, messages, **kwargs):
+        calls.append(messages)
+        message = type("Msg", (), {"content": next(answers)})()
+        return type("Completion", (), {"choices": [type("Choice", (), {"message": message})()]})()
+
+    pipeline.client.chat.completions.create = fake_create
+    return calls
+
+
+class TestUsedSources:
+    """A source is only a page the answer draws on (CONTEXT.md): the model
+    names the context blocks it used on a trailing QUELLEN line, which is
+    stripped from the answer."""
+
+    QUESTION = "Wie hoch ist das Kindergeld?"
+    URLS = ["https://example.org/a", "https://example.org/b", "https://example.org/c"]
+
+    @pytest.fixture(autouse=True)
+    def fixed_retrieval(self, pipeline):
+        # Pin what retrieval returns: the fake embeddings follow hash(),
+        # which changes per process, so real retrieval order would flake.
+        chunks = [
+            SimpleNamespace(id=i, url=url, title=f"Seite {i}", content=f"Inhalt {i}")
+            for i, url in enumerate(self.URLS)
+        ]
+        pipeline.retrieve = lambda *args, **kwargs: chunks
+
+    def test_context_blocks_are_numbered(self, pipeline):
+        calls = reply_with(pipeline, "Antwort\nQUELLEN: 1")
+        pipeline.answer(TurnPlan.direct(self.QUESTION))
+        prompt = calls[-1][-1]["content"]
+        assert "[1] Seite 0" in prompt and "[3] Seite 2" in prompt
+        assert "QUELLEN" in prompt
+
+    def test_only_cited_pages_are_listed_and_marker_stripped(self, pipeline):
+        reply_with(pipeline, "Die Antwort.\n\nQUELLEN: 3, 1")
+        answer, sources = pipeline.answer(TurnPlan.direct(self.QUESTION))
+        assert answer == "Die Antwort."
+        # Retrieval order, not the order the model listed them in.
+        assert [s["url"] for s in sources] == [self.URLS[0], self.URLS[2]]
+
+    def test_missing_marker_keeps_every_retrieved_page(self, pipeline):
+        reply_with(pipeline, "Die Antwort.")
+        answer, sources = pipeline.answer(TurnPlan.direct(self.QUESTION))
+        assert answer == "Die Antwort."
+        assert [s["url"] for s in sources] == self.URLS
+
+    def test_unreadable_marker_is_stripped_but_keeps_every_page(self, pipeline):
+        reply_with(pipeline, "Die Antwort.\nQUELLEN: die Seite der Familienkasse")
+        answer, sources = pipeline.answer(TurnPlan.direct(self.QUESTION))
+        assert answer == "Die Antwort."
+        assert [s["url"] for s in sources] == self.URLS
+
+    def test_none_used_lists_only_the_authority(self, pipeline):
+        authority = BehoerdeResult(authority_name="Familienkasse", service_name="Kindergeld", website="https://fk.example")
+        reply_with(pipeline, "Die Antwort.\nQUELLEN: -")
+        answer, sources = pipeline.answer(TurnPlan(Kind.ANSWER, self.QUESTION, authority=Found(authority)))
+        assert answer == "Die Antwort."
+        assert [s["url"] for s in sources] == ["https://fk.example"]
+
+    def test_out_of_range_numbers_are_ignored(self, pipeline):
+        reply_with(pipeline, "Die Antwort.\nQUELLEN: 2, 99")
+        _, sources = pipeline.answer(TurnPlan.direct(self.QUESTION))
+        assert [s["url"] for s in sources] == [self.URLS[1]]
+
+    def test_marker_survives_language_retry_that_drops_it(self, pipeline):
+        # First answer leaks Thai; the clean retry forgets the QUELLEN line,
+        # so the first one's list still counts.
+        reply_with(pipeline, "Antwort ย\nQUELLEN: 2", "Antwort")
+        answer, sources = pipeline.answer(TurnPlan.direct(self.QUESTION))
+        assert answer == "Antwort"
+        assert [s["url"] for s in sources] == [self.URLS[1]]
+
+    def test_marker_with_native_digits_and_fullwidth_colon(self, pipeline):
+        reply_with(pipeline, "الجواب\nQUELLEN： ٢")
+        answer, sources = pipeline.answer(TurnPlan.direct(self.QUESTION, language="ar"))
+        assert answer == "الجواب"
+        assert [s["url"] for s in sources] == [self.URLS[1]]
