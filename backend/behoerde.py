@@ -35,6 +35,21 @@ TOPIC_QUERIES = {
     "aufenthalt": ["Aufenthaltserlaubnis beantragen", "Aufenthaltstitel"],
 }
 
+# Services a topic's queries would miss, searched on their own when the
+# message names them: TOPIC_QUERIES["rente"] finds the Rentenversicherung, but
+# Grundsicherung im Alter is the Sozialamt's.
+SERVICE_QUERIES = [
+    (
+        (
+            "grundsicherung im alter",
+            "grundsicherung bei erwerbsminderung",
+            "grundsicherung wegen erwerbsminderung",
+            "altersgrundsicherung",
+        ),
+        "Grundsicherung im Alter und bei Erwerbsminderung",
+    ),
+]
+
 # Question words and filler dilute the PVOG full-text search ("Wo kann ich
 # meine Wohnung anmelden?" matches worse than "Wohnung anmelden").
 STOPWORDS = {
@@ -205,7 +220,9 @@ class BehoerdeFinder:
 
     def _queries_for(self, query: str, topic: str | None) -> list[str]:
         """Search terms to try, most reliable first: the topic's official
-        wording, then the user's own words, then just the key word.
+        wording, then the user's own words, then just the key word — or
+        only the service's own name when the message names one in
+        SERVICE_QUERIES.
 
         The last one is not redundant — PVOG's ranking is thrown off by
         the words around the service name: "bekomme Personalausweis" in
@@ -213,6 +230,14 @@ class BehoerdeFinder:
         returns "Personalausweis; Beantragung" at the top.
         """
         stripped = strip_stopwords(query)
+        lowered = query.lower()
+        # A named service is the only thing searched: where PVOG has no local
+        # row for it, the topic's queries and the bare key word
+        # ("Grundsicherung") find a different service's office, which is
+        # worse than none.
+        service = [q for phrases, q in SERVICE_QUERIES if any(p in lowered for p in phrases)]
+        if service:
+            return service
         candidates = TOPIC_QUERIES.get(topic or "", []) + [stripped, *key_terms(stripped)]
         return list(dict.fromkeys(q for q in candidates if q))
 

@@ -19,11 +19,21 @@ The way a turn is answered: small talk, a question about the bot itself (meta), 
 _Avoid_: mode, intent
 
 **Topic**:
-The benefit area a turn is about (Bürgergeld, Kindergeld, Wohngeld, Rente, Aufenthalt, …), or `allgemein` when none is recognised. Only a turn has a topic; pages and sources do not, and how a page was filed when it was crawled is not its topic.
+The benefit area a turn is about (Grundsicherungsgeld, Kindergeld, Wohngeld, Rente, Aufenthalt, …), or `allgemein` when none is recognised. Only a turn has a topic; pages and sources do not, and how a page was filed when it was crawled is not its topic.
 _Avoid_: category, theme; topic (for a page's crawl filing)
 
 **Retrieval query**:
 The text searched against the knowledge base: usually the message itself, the previous question plus the message for short follow-ups.
+
+### Benefits
+
+**Grundsicherungsgeld**:
+The basic income support for people who can work but can't live on their own income (SGB II); called Bürgergeld until 2026-07-01, and the same benefit under both names. Answers name both while official pages still use the old name.
+_Avoid_: Bürgergeld (except as the former name), Grundsicherung (alone)
+
+**Grundsicherung im Alter und bei Erwerbsminderung**:
+A different benefit (SGB XII) for people past retirement age or permanently unable to work, handled by the Sozialamt, not the Jobcenter. It belongs to the Rente topic.
+_Avoid_: Grundsicherung (alone)
 
 ### Authorities
 

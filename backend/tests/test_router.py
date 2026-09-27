@@ -10,6 +10,13 @@ class TestClassify:
         assert router.classify("Grundsicherung beantragen") == "buergergeld"
         assert router.classify("Wo ist mein Jobcenter?") == "buergergeld"
 
+    def test_grundsicherung_im_alter_is_rente_not_buergergeld(self):
+        # SGB XII benefit handled by the Sozialamt — routing it to
+        # buergergeld sent pensioners to the Jobcenter.
+        assert router.classify("Wo beantrage ich Grundsicherung im Alter?") == "rente"
+        assert router.classify("Grundsicherung bei Erwerbsminderung beantragen") == "rente"
+        assert router.classify("Wie viel Grundsicherungsgeld bekomme ich?") == "buergergeld"
+
     def test_new_topics(self):
         assert router.classify("Wann kann ich in Rente gehen?") == "rente"
         assert router.classify("Wie beantrage ich Wohngeld?") == "wohngeld"

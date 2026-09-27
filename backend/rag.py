@@ -145,7 +145,8 @@ enthält, nenne diese Stelle in der Antwort ausdrücklich mit Name, Adresse und 
 Kontaktmöglichkeiten — das ist die konkrete Anlaufstelle für die Person.
 - Mache die Antwort handlungsorientiert. Wenn es zur Frage passt, nenne: \
 Wer hat Anspruch? Was muss man konkret tun? Welche Behörde ist zuständig \
-(z. B. Familienkasse für Kindergeld, Jobcenter für Bürgergeld/Grundsicherung)?
+(z. B. Familienkasse für Kindergeld, Jobcenter für Grundsicherungsgeld/Bürgergeld, \
+Sozialamt für Grundsicherung im Alter und bei Erwerbsminderung)?
 - Hinweis zur Übergangszeit: "Bürgergeld" heißt seit dem 1. Juli 2026 \
 "Grundsicherungsgeld" (Neue Grundsicherung). Beide Begriffe meinen dieselbe Leistung; \
 erwähne das kurz, wenn die Frage eine der beiden Bezeichnungen verwendet.

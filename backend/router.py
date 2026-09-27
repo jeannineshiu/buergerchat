@@ -31,6 +31,19 @@ TOPIC_KEYWORDS = {
 
 DEFAULT_TOPIC = "allgemein"
 
+# Phrases checked before TOPIC_KEYWORDS because they contain another topic's
+# keyword: Grundsicherung im Alter und bei Erwerbsminderung (SGB XII,
+# Sozialamt) is not Grundsicherungsgeld (SGB II, Jobcenter), though both
+# say "grundsicherung".
+TOPIC_PHRASES = {
+    "rente": [
+        "grundsicherung im alter",
+        "grundsicherung bei erwerbsminderung",
+        "grundsicherung wegen erwerbsminderung",
+        "altersgrundsicherung",
+    ],
+}
+
 # Signals that the user wants to know WHICH authority is responsible /
 # where to go — orthogonal to the topic ("Wo beantrage ich Kindergeld?"
 # is topic kindergeld + authority intent).
@@ -196,6 +209,9 @@ _CHITCHAT_STRIP = " \t\n!！?？.。,，~～"
 class QueryRouter:
     def classify(self, message: str) -> str:
         lowered = message.lower()
+        for topic, phrases in TOPIC_PHRASES.items():
+            if any(phrase in lowered for phrase in phrases):
+                return topic
         for topic, keywords in TOPIC_KEYWORDS.items():
             if any(keyword in lowered for keyword in keywords):
                 return topic

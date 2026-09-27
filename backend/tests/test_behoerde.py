@@ -281,6 +281,23 @@ class TestTopicQueries:
 
         assert set(TOPIC_KEYWORDS) <= set(TOPIC_QUERIES)
 
+    def test_grundsicherung_im_alter_replaces_rente_queries(self):
+        # "Altersrente beantragen" finds the Rentenversicherung, but
+        # Grundsicherung im Alter is the Sozialamt's service.
+        # Nothing else is searched either: where PVOG has no local row, the
+        # rente queries find a pension office and the bare key word
+        # "Grundsicherung" a Bundesagentur service (seen for PLZ 49477).
+        for message in ("Grundsicherung im Alter beantragen", "Grundsicherung wegen Erwerbsminderung"):
+            queries = BehoerdeFinder()._queries_for(message, "rente")
+            assert queries == ["Grundsicherung im Alter und bei Erwerbsminderung"]
+
+    def test_plain_rente_question_keeps_topic_queries_first(self):
+        queries = BehoerdeFinder()._queries_for("Wann kann ich in Rente gehen?", "rente")
+        assert queries[0] == "Altersrente beantragen"
+        # Erwerbsminderungsrente is the Rentenversicherung's, not the Sozialamt's.
+        queries = BehoerdeFinder()._queries_for("Erwerbsminderungsrente beantragen", "rente")
+        assert queries[0] == "Altersrente beantragen"
+
 
 class TestHelpers:
     def test_district_of_berlin_ars(self):
