@@ -42,8 +42,11 @@ command -v railway >/dev/null || {
 }
 
 files() {
-    # The CLI prints its volume prompt echo on stderr even with --volume.
-    railway volume files --volume "$VOLUME" "$@" 2>/dev/null
+    # stderr is left alone on purpose: besides a harmless volume prompt echo
+    # ("> Select a volume …", printed even with --volume) it carries the
+    # CLI's errors. Silencing it turned a failed Railway call (2026-09-27,
+    # first CI ship) into a bare JSONDecodeError with the cause gone.
+    railway volume files --volume "$VOLUME" "$@"
 }
 
 volume_names() {
@@ -87,7 +90,7 @@ else
 fi
 
 latest_deployment() {
-    railway deployment list --service "$SERVICE" --limit 1 --json 2>/dev/null |
+    railway deployment list --service "$SERVICE" --limit 1 --json |
         python3 -c 'import json, sys; d = json.load(sys.stdin)[0]; print(d["id"], d["status"])'
 }
 
