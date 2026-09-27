@@ -41,3 +41,13 @@ _Avoid_: authority search, PVOG (for the lookup as a whole)
 
 **Authority outcome**:
 What a turn's answer says about the responsible Behörde: not asked for, needs a PLZ first, found, or not found.
+
+### Answers and sources
+
+**Source**:
+The smallest separately linkable part of an official text that an answer draws on (a page, or a single § of a law), listed with the answer so the reader can check the original. A page that was retrieved but not used in the answer is not a source; a Behörde's website is a source when the answer names that Behörde. The same article published at several addresses (e.g. once per local office) is one source; when the reader has given a PLZ and a copy exists for the office responsible for that place, that copy is the one listed.
+_Avoid_: reference, retrieved page, context (for the listed pages)
+
+**Publisher**:
+The official website a page was crawled from (Bundesagentur für Arbeit, gesetze-im-internet.de, service.berlin.de, …). Never shown to the reader.
+_Avoid_: source (for the website)
