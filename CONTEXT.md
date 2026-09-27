@@ -19,8 +19,8 @@ The way a turn is answered: small talk, a question about the bot itself (meta), 
 _Avoid_: mode, intent
 
 **Topic**:
-The benefit area a turn is about (Bürgergeld, Kindergeld, Wohngeld, Rente, Aufenthalt, …), or `allgemein` when none is recognised.
-_Avoid_: category, theme
+The benefit area a turn is about (Bürgergeld, Kindergeld, Wohngeld, Rente, Aufenthalt, …), or `allgemein` when none is recognised. Only a turn has a topic; pages and sources do not, and how a page was filed when it was crawled is not its topic.
+_Avoid_: category, theme; topic (for a page's crawl filing)
 
 **Retrieval query**:
 The text searched against the knowledge base: usually the message itself, the previous question plus the message for short follow-ups.
