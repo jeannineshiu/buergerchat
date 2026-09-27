@@ -7,6 +7,7 @@
 #   scripts/ship-index.sh   (uploads, swaps and redeploys)
 # The weekly crawl already does this on its own when the index changed;
 # by hand this is for rollbacks to an older run or a missing secret.
+# ship-index.yml does download + ship + smoke test in CI in one go.
 #
 # Needs an authenticated gh CLI (gh auth login).
 #

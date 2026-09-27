@@ -13,6 +13,8 @@
 # Railway volume, swap, redeploy), followed by the production smoke test.
 # A failed smoke test fails the run; roll back with
 # `RESTORE=prev scripts/ship-index.sh` (the replaced files stay as *.prev).
+# If only the ship step failed, re-ship that run's index without crawling
+# again: `gh workflow run ship-index.yml -f run_id=<run id>`.
 #
 # The repo is public, so these artifacts are downloadable by anyone —
 # fine for crawled public government pages, but never put secrets or
