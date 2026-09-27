@@ -54,6 +54,10 @@ What a turn's answer says about the responsible Behörde: not asked for, needs a
 
 ### Answers and sources
 
+**Knowledge base**:
+The official texts the live chatbot can answer from and cite as sources right now. A page that has been fetched but has not yet reached the live chatbot is not in it, and the Behörden-Finder's live lookup is not part of it.
+_Avoid_: corpus, index (for the content)
+
 **Source**:
 The smallest separately linkable part of an official text that an answer draws on (a page, or a single § of a law), listed with the answer so the reader can check the original. A page that was retrieved but not used in the answer is not a source; a Behörde's website is a source when the answer names that Behörde. The same article published at several addresses (e.g. once per local office) is one source; when the reader has given a PLZ and a copy exists for the office responsible for that place, that copy is the one listed.
 _Avoid_: reference, retrieved page, context (for the listed pages)
