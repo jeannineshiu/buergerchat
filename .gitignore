@@ -28,6 +28,7 @@ crawler/output/
 .DS_Store
 .vscode/
 .idea/
+.obsidian/
 .claude/settings.local.json
 
 # Logs
