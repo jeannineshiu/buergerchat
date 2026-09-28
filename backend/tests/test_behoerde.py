@@ -380,6 +380,25 @@ class TestTopicQueries:
             queries = BehoerdeFinder()._queries_for(message, "rente")
             assert queries == ["Grundsicherung im Alter und bei Erwerbsminderung"]
 
+    def test_registering_a_home_searches_pvogs_own_word(self):
+        # PVOG calls it "Wohnsitz anmelden"; the key word "Wohnung" rejected
+        # that row and offered the Steueramt (Zweitwohnungssteuer) in Köln.
+        for message in (
+            "Wo melde ich meine Wohnung an?",
+            "Wo kann ich meine Wohnung anmelden?",
+            "Anmeldung der Wohnung in Köln",
+            "Wie melde ich mich um?",
+            "Ich bin umgezogen, wo muss ich mich ummelden?",
+            "Wo muss ich meinen Umzug melden?",
+        ):
+            assert BehoerdeFinder()._queries_for(message, "allgemein") == ["Wohnsitz anmelden"], message
+        # "um … zu" is not ummelden, and a Wohnung alone is not registering one.
+        for message in (
+            "Wo melde ich mich um Bürgergeld zu bekommen?",
+            "Wo beantrage ich Wohngeld für meine Wohnung?",
+        ):
+            assert "Wohnsitz anmelden" not in BehoerdeFinder()._queries_for(message, "allgemein"), message
+
     def test_plain_rente_question_keeps_topic_queries_first(self):
         queries = BehoerdeFinder()._queries_for("Wann kann ich in Rente gehen?", "rente")
         # "Altersrente beantragen" ranked the Landwirtschaftliche

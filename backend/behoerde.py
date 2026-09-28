@@ -39,16 +39,29 @@ TOPIC_QUERIES = {
 
 # Services a topic's queries would miss, searched on their own when the
 # message names them: TOPIC_QUERIES["rente"] finds the Rentenversicherung, but
-# Grundsicherung im Alter is the Sozialamt's.
+# Grundsicherung im Alter is the Sozialamt's. Readers also don't use PVOG's
+# word for a service: "Wo melde ich meine Wohnung an?" is "Wohnsitz
+# anmelden", and searching "Wohnung" finds the Zweitwohnungssteuer.
+# German separable verbs split the phrase ("melde … Wohnung an"), hence
+# patterns rather than fixed strings.
 SERVICE_QUERIES = [
     (
-        (
-            "grundsicherung im alter",
-            "grundsicherung bei erwerbsminderung",
-            "grundsicherung wegen erwerbsminderung",
-            "altersgrundsicherung",
+        re.compile(
+            r"grundsicherung (im alter|bei erwerbsminderung|wegen erwerbsminderung)"
+            r"|altersgrundsicherung"
         ),
         "Grundsicherung im Alter und bei Erwerbsminderung",
+    ),
+    (
+        re.compile(
+            r"\b(wohnung|wohnsitz|umzug)\w*\b[^?.!]*\ban(zu)?meld"
+            r"|\banmeld\w*\b[^?.!]*\b(wohnung|wohnsitz)"
+            r"|\bmelde\w*\b[^?.!]*\b(wohnung|wohnsitz)\b[^?.!]*\ban\s*([?.!]|$)"
+            r"|\bum(zu)?meld"
+            r"|\bmelde\w*\b[^?.!]*\bum\s*([?.!]|$)"
+            r"|\bumzug\w*\b[^?.!]*\bmeld"
+        ),
+        "Wohnsitz anmelden",
     ),
 ]
 
@@ -299,7 +312,7 @@ class BehoerdeFinder:
         # row for it, the topic's queries and the bare key word
         # ("Grundsicherung") find a different service's office, which is
         # worse than none.
-        service = [q for phrases, q in SERVICE_QUERIES if any(p in lowered for p in phrases)]
+        service = [q for pattern, q in SERVICE_QUERIES if pattern.search(lowered)]
         if service:
             return service
         candidates = TOPIC_QUERIES.get(topic or "", []) + [stripped, *key_terms(stripped)]
