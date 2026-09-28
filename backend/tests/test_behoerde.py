@@ -11,6 +11,8 @@ from behoerde import (
     is_relevant,
     key_terms,
     strip_stopwords,
+    HAMBURG_JOBCENTER_BY_STADTTEIL,
+    HAMBURG_STADTTEILE,
     _district_of,
     _is_federal,
 )
@@ -198,6 +200,79 @@ class TestFind:
         result = finder.find("20095", "Wo beantrage ich Grundsicherung im Alter?", topic="rente")
         assert result is not None
         assert result.authority_name == "Bezirksamt Hamburg-Mitte - Fachamt Grundsicherung und Soziales"
+
+    def _hamburg_jobcenter_handler(self, locations):
+        # The Jobcenter's 17 units as live PVOG lists them (2026-09-28):
+        # named by Stadtteil, or by Bezirk without the "Hamburg-" prefix.
+        standorte = [
+            "Altona", "Barmbek", "Bergedorf", "Billstedt", "Bramfeld", "Eimsbüttel",
+            "Hamburg-Nord", "Harburg", "Lokstedt", "Mitte", "Mümmelmannsberg",
+            "Osdorf", "Rahlstedt", "St. Pauli", "Süderelbe", "Wandsbek", "Wilhelmsburg",
+        ]
+        titles = {
+            f"L3.OE.{i}": f"Jobcenter team.arbeit.hamburg - Standort {s}"
+            for i, s in enumerate(standorte)
+        }
+
+        def handler(request):
+            path = request.url.path
+            if path.endswith("/v3/locations/details"):
+                return httpx.Response(200, json=locations)
+            if "/v7/servicedescriptions/" in path:
+                content = [{"id": "L3.LB.1", "name": "Bürgergeld beantragen", "ars": [HAMBURG_ARS]}]
+                return httpx.Response(200, json={"serviceDescriptions": {"content": content}})
+            if path.endswith("/v2/organisationunits/titles"):
+                return httpx.Response(200, json=[
+                    {"id": oe, "title": title, "role": {"code": "03"}} for oe, title in titles.items()
+                ])
+            if path.endswith("/v5/organisationunits/detail"):
+                return httpx.Response(200, json={
+                    "title": titles[request.url.params.get("q")],
+                    "location": {
+                        "addresses": [{"type": "Hausanschrift", "street": "Teststr. 4", "zip": "20097", "city": "Hamburg"}],
+                        "communications": [],
+                    },
+                    "internetAddresses": [],
+                })
+            raise AssertionError(path)
+
+        return handler
+
+    def test_hamburg_jobcenter_standort_named_by_bezirk_without_prefix(self):
+        # 20095 is Bezirk Hamburg-Mitte, but its Standort is titled just
+        # "Mitte" — the Bezirk match fails and Altona (listed first) won.
+        handler = self._hamburg_jobcenter_handler([
+            {"ars": HAMBURG_ARS, "plz": "20095", "name": "Hamburg 'Hamburg-Altstadt'"},
+            {"ars": HAMBURG_ARS, "plz": "20095", "name": "Hamburg 'St. Georg'"},
+        ])
+        result = make_finder(handler).find("20095", "Wo ist mein Jobcenter?", topic="buergergeld")
+        assert result is not None
+        assert result.authority_name == "Jobcenter team.arbeit.hamburg - Standort Mitte"
+
+    def test_hamburg_jobcenter_standort_follows_its_own_zustaendigkeit(self):
+        # Horn lies in Bezirk Hamburg-Mitte, but team.arbeit.hamburg sends
+        # it to Standort Billstedt; Niendorf (Eimsbüttel) goes to Lokstedt.
+        horn = self._hamburg_jobcenter_handler([
+            {"ars": HAMBURG_ARS, "plz": "22119", "name": "Hamburg 'Horn'"},
+        ])
+        result = make_finder(horn).find("22119", "Wo ist mein Jobcenter?", topic="buergergeld")
+        assert result.authority_name == "Jobcenter team.arbeit.hamburg - Standort Billstedt"
+
+        niendorf = self._hamburg_jobcenter_handler([
+            {"ars": HAMBURG_ARS, "plz": "22455", "name": "Hamburg 'Niendorf'"},
+        ])
+        result = make_finder(niendorf).find("22455", "Wo ist mein Jobcenter?", topic="buergergeld")
+        assert result.authority_name == "Jobcenter team.arbeit.hamburg - Standort Lokstedt"
+
+    def test_hamburg_billstedt_standort_depends_on_the_plz(self):
+        # 22115 belongs to Standort Mümmelmannsberg; its 22113/22117 cases
+        # are served at Standort Billstedt's address for now.
+        for plz, standort in [("22115", "Mümmelmannsberg"), ("22117", "Billstedt"), ("22111", "Billstedt")]:
+            handler = self._hamburg_jobcenter_handler([
+                {"ars": HAMBURG_ARS, "plz": plz, "name": "Hamburg 'Billstedt'"},
+            ])
+            result = make_finder(handler).find(plz, "Wo ist mein Jobcenter?", topic="buergergeld")
+            assert result.authority_name == f"Jobcenter team.arbeit.hamburg - Standort {standort}", plz
 
     def test_federal_hotline_is_fallback_when_no_local_data(self):
         def handler(request):
@@ -432,6 +507,13 @@ class TestHelpers:
         assert _district_of({"ars": "020000000000", "name": "Hamburg 'Ottensen'"}) == "Altona"
         assert _district_of({"ars": "020000000000", "name": "Hamburg 'Kleingartenanlage'"}) is None
         assert _district_of({"ars": "020000000000", "name": "Hamburg, Freie und Hansestadt"}) is None
+
+    def test_hamburg_jobcenter_table_covers_every_stadtteil(self):
+        # Spellings must be PVOG's (the Bezirk table's), or a Stadtteil
+        # silently falls back to its Bezirk.
+        assert set(HAMBURG_JOBCENTER_BY_STADTTEIL) <= set(HAMBURG_STADTTEILE)
+        unmapped = set(HAMBURG_STADTTEILE) - set(HAMBURG_JOBCENTER_BY_STADTTEIL)
+        assert unmapped == {"Billstedt", "Eimsbüttel", "Heimfeld"}
 
     def test_strip_stopwords(self):
         assert strip_stopwords("Wo kann ich meine Wohnung anmelden?") == "Wohnung anmelden"

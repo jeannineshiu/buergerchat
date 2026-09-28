@@ -183,6 +183,82 @@ HAMBURG_STADTTEILE = {
     for stadtteil in stadtteile
 }
 
+# The Jobcenter team.arbeit.hamburg cuts its own catchment areas across
+# Bezirk lines (Horn is Hamburg-Mitte but belongs to Standort Billstedt)
+# and titles its units "Standort Mitte", never "Hamburg-Mitte" — so the
+# Bezirk alone picks no unit, or the wrong one. Per the "Zuständigkeit"
+# on each team-arbeit-hamburg.de/standorte/<name>/ page (2026-09-28).
+# Eimsbüttel (Standort Eimsbüttel or Lokstedt) and Heimfeld (Harburg or
+# Süderelbe) are split without a published rule; they are left out and
+# fall back to their Bezirk's namesake Standort.
+HAMBURG_JOBCENTER_STANDORTE = {
+    "Mitte": (
+        "Borgfelde", "Finkenwerder", "HafenCity", "Neuwerk", "Hamburg-Altstadt",
+        "Hammerbrook", "Hamm", "Kleiner Grasbrook", "Neustadt", "Rothenburgsort",
+        "St. Georg", "Steinwerder", "Veddel", "Waltershof",
+    ),
+    "St. Pauli": ("St. Pauli",),
+    "Wilhelmsburg": ("Wilhelmsburg",),
+    "Billstedt": ("Horn",),
+    "Mümmelmannsberg": ("Billbrook",),
+    "Altona": ("Bahrenfeld", "Ottensen", "Altona-Nord", "Altona-Altstadt", "Sternschanze"),
+    "Osdorf": (
+        "Blankenese", "Groß Flottbek", "Iserbrook", "Lurup", "Nienstedten", "Osdorf",
+        "Othmarschen", "Rissen", "Sülldorf",
+    ),
+    "Eimsbüttel": ("Harvestehude", "Hoheluft-West", "Rotherbaum"),
+    "Lokstedt": ("Eidelstedt", "Lokstedt", "Niendorf", "Schnelsen", "Stellingen"),
+    "Hamburg-Nord": (
+        "Alsterdorf", "Eppendorf", "Fuhlsbüttel", "Groß Borstel", "Hoheluft-Ost",
+        "Langenhorn", "Ohlsdorf", "Winterhude",
+    ),
+    "Barmbek": ("Barmbek-Nord", "Barmbek-Süd", "Dulsberg", "Hohenfelde", "Uhlenhorst"),
+    "Wandsbek": ("Eilbek", "Jenfeld", "Marienthal", "Tonndorf", "Wandsbek"),
+    "Bramfeld": ("Bramfeld", "Farmsen-Berne", "Steilshoop"),
+    "Rahlstedt": (
+        "Bergstedt", "Duvenstedt", "Hummelsbüttel", "Lemsahl-Mellingstedt",
+        "Poppenbüttel", "Rahlstedt", "Sasel", "Volksdorf", "Wellingsbüttel",
+        "Wohldorf-Ohlstedt",
+    ),
+    "Bergedorf": (
+        "Allermöhe", "Neuallermöhe", "Altengamme", "Bergedorf", "Billwerder",
+        "Curslack", "Kirchwerder", "Lohbrügge", "Moorfleet", "Neuengamme",
+        "Ochsenwerder", "Reitbrook", "Spadenland", "Tatenberg",
+    ),
+    "Harburg": (
+        "Eißendorf", "Gut Moor", "Harburg", "Langenbek", "Marmstorf", "Neuland",
+        "Rönneburg", "Sinstorf", "Wilstorf",
+    ),
+    "Süderelbe": (
+        "Altenwerder", "Cranz", "Francop", "Hausbruch", "Moorburg", "Neuenfelde",
+        "Neugraben-Fischbek",
+    ),
+}
+HAMBURG_JOBCENTER_BY_STADTTEIL = {
+    stadtteil: standort
+    for standort, stadtteile in HAMBURG_JOBCENTER_STANDORTE.items()
+    for stadtteil in stadtteile
+}
+# Billstedt is split by PLZ: 22111/22119 at Standort Billstedt, the rest
+# (Mümmelmannsberg itself is 22115) at Standort Mümmelmannsberg — whose
+# 22113/22117 cases are currently served at Standort Billstedt's address
+# ("Auslagerung Billstedter Hauptstraße"), so that is where to send them.
+BILLSTEDT_PLZ = ("22111", "22119")
+MUEMMELMANNSBERG_AT_BILLSTEDT_PLZ = ("22113", "22117")
+
+
+def _jobcenter_standort(location: dict) -> str | None:
+    match = DISTRICT_PATTERN.search(location.get("name") or "")
+    stadtteil = match.group(1) if match else ""
+    plz = location.get("plz")
+    if stadtteil == "Billstedt":
+        standort = "Billstedt" if plz in BILLSTEDT_PLZ else "Mümmelmannsberg"
+    else:
+        standort = HAMBURG_JOBCENTER_BY_STADTTEIL.get(stadtteil)
+    if standort == "Mümmelmannsberg" and plz in MUEMMELMANNSBERG_AT_BILLSTEDT_PLZ:
+        return "Billstedt"
+    return standort
+
 
 def _district_of(location: dict) -> str | None:
     ars = location.get("ars") or ""
@@ -197,6 +273,29 @@ def _district_of(location: dict) -> str | None:
     if ars.startswith(HAMBURG_LAND_ARS):
         return HAMBURG_STADTTEILE.get(quoted or "")
     return quoted
+
+
+def _match_candidates(location: dict) -> list[str]:
+    """Strings that mark a unit title as the office for this location,
+    most specific first."""
+    candidates = []
+    if (location.get("ars") or "").startswith(HAMBURG_LAND_ARS):
+        standort = _jobcenter_standort(location)
+        if standort:
+            # With the "Standort " prefix so it only ever matches a
+            # Jobcenter unit, never e.g. a Bezirksamt's Kundenzentrum.
+            candidates.append(f"Standort {standort}")
+    district = _district_of(location)
+    if district:
+        candidates.append(district)
+    return candidates
+
+
+def _match_rank(title: str, candidates: list[str]) -> int:
+    # Index of the first candidate the title names; no match sorts last.
+    return next(
+        (i for i, c in enumerate(candidates) if c.lower() in title), len(candidates)
+    )
 
 FALLBACK_SOURCE_URL = "https://servicesuche.bund.de/"
 
@@ -371,7 +470,7 @@ class BehoerdeFinder:
         ars = location.get("ars")
         if not ars:
             return [], []
-        districts = list(dict.fromkeys(d for d in map(_district_of, pool) if d))
+        districts = list(dict.fromkeys(c for loc in pool for c in _match_candidates(loc)))
         # ARS layout: Land(2) Reg.-Bezirk(1) Kreis(2) Verband(4) Gemeinde(3).
         candidates = [ars, ars[:5] + "0" * 7, ars[:2] + "0" * 10]
         return list(dict.fromkeys(candidates)), districts
@@ -400,10 +499,7 @@ class BehoerdeFinder:
             units = self._get("/v2/organisationunits/titles", {"ars": ars, "lbId": lbid}).json()
             units.sort(
                 key=lambda u: (
-                    not any(
-                        d.lower() in (u.get("title") or "").lower()
-                        for d in districts or []
-                    ),
+                    _match_rank((u.get("title") or "").lower(), districts or []),
                     (u.get("role") or {}).get("code") != ROLE_RESPONSIBLE,
                 )
             )
