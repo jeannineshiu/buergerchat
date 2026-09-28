@@ -45,7 +45,7 @@ The local OpenAI key is production's key and project: a local run that hits the 
 
 ## Backend rules
 
-- `/chat` is thin: `turn_plan.TurnPlanner.plan()` → `RAGPipeline.answer(plan)`. Routing decisions (turn kind, topic, authority outcome, PLZ, history fallbacks) belong in `turn_plan.py`; prompt directives in `rag.py`. Evals build `TurnPlan.direct(...)`.
+- `/chat` is thin: `turn_plan.TurnPlanner.plan()` → `RAGPipeline.answer(plan)`. Routing decisions (turn kind, topic, authority outcome, PLZ, history fallbacks) belong in `turn_plan.py`; prompt directives in `rag.py`; what becomes a Source (context numbering, the QUELLEN line, dedupe, the Behörde's source) in `sources.py`. Evals build `TurnPlan.direct(...)`.
 - Router keywords cover German phrasing only, so every non-German message is routed on its German translation (`RAGPipeline.to_german`). Retrieval embeds the translation too, except English, which embeds untranslated.
 - `RERANK=1` is set in production (off in code): vector top-5 stays untouched and the LLM rerank *appends* up to `RERANK_EXTRA_K` picks — union, never swap.
 - Reasoning effort is explicit per call (`HELPER_REASONING_EFFORT`, `ANSWER_REASONING_EFFORT`, default `none`); `""` omits the parameter for non-reasoning models. Model history is in the comment in `rag.py`.

@@ -8,7 +8,6 @@ backend worker/replica loads the index independently).
 
 import os
 import re
-import sys
 import threading
 from pathlib import Path
 
@@ -18,6 +17,7 @@ from openai import OpenAI
 
 from app.db import SessionLocal
 from app.models import Chunk
+from sources import AUTHORITY_HEADER, SourceList
 from turn_plan import Found, Kind, NeedsPlz, NotFound, TurnPlan
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -103,7 +103,7 @@ durch Komma getrennt. Keine Erklärung. Beispiel: 7,2,15,1,9"""
 # Product positioning (see CLAUDE.md): translate Amtsdeutsch into plain
 # language with actionable steps. The context is always German; the answer
 # is written in the user's language.
-SYSTEM_PROMPT = """\
+SYSTEM_PROMPT = f"""\
 Du bist ein Assistent, der deutsches Behördendeutsch in einfache Sprache übersetzt \
 (Schwerpunkte: Bürgergeld/Grundsicherung, Kindergeld und Familienleistungen, Rente, \
 Wohngeld, Steuer-ID und Steuern, Aufenthalt und Einbürgerung, Zuständigkeiten von Behörden).
@@ -141,7 +141,7 @@ haben Sie derzeit? Davon hängt ab, was für Sie gilt."
 - Schreibe in einfacher Sprache (Niveau B1): kurze Sätze, keine Amtssprache. \
 Nenne amtliche Begriffe trotzdem beim Namen (z. B. "Bedarfsgemeinschaft"), aber \
 erkläre sie sofort in einfachen Worten.
-- Wenn der Kontext einen Abschnitt "[Zuständige Stelle laut Behördenfinder (PVOG)]" \
+- Wenn der Kontext einen Abschnitt "{AUTHORITY_HEADER}" \
 enthält, nenne diese Stelle in der Antwort ausdrücklich mit Name, Adresse und \
 Kontaktmöglichkeiten — das ist die konkrete Anlaufstelle für die Person.
 - Mache die Antwort handlungsorientiert. Wenn es zur Frage passt, nenne: \
@@ -241,33 +241,6 @@ FORBIDDEN_SCRIPTS = re.compile(
     "ក-៿"    # Khmer
     "぀-ヿ]"   # Hiragana, Katakana
 )
-
-# A source is only a page the answer draws on (CONTEXT.md), not everything
-# retrieved — with RERANK up to top-5 + RERANK_EXTRA_K chunks reach the
-# context. The answer names the numbered context blocks it used on a last
-# "QUELLEN: 1, 3" line, which is stripped before the answer is shown.
-USED_SOURCES_LINE = re.compile(r"(?:^|\n)[ \t*]*QUELLEN[ \t*]*[:：]([^\n]*)\s*\Z", re.IGNORECASE)
-NONE_USED = {"-", "–", "—", "keine", "none"}
-
-
-def split_used_sources(answer: str) -> tuple[str, set[int] | None]:
-    """Strip a trailing QUELLEN line; return the answer and the context block
-    numbers it names — None when there is no usable line, so the caller keeps
-    every retrieved page rather than dropping real sources."""
-    match = USED_SOURCES_LINE.search(answer)
-    if not match:
-        return answer, None
-    listed = match.group(1).strip(" \t*")
-    # \d also matches Arabic/Persian digits, and int() reads them.
-    numbers = {int(n) for n in re.findall(r"\d+", listed)}
-    if numbers:
-        used: set[int] | None = numbers
-    elif listed.lower() in NONE_USED:
-        used = set()
-    else:
-        used = None
-    return answer[: match.start()].rstrip(), used
-
 
 def resolve_faiss_path() -> Path:
     # DATA_DIR points at the built artifacts (on Railway: the volume mount,
@@ -477,14 +450,7 @@ class RAGPipeline:
             )
 
         authority = plan.authority.result if isinstance(plan.authority, Found) else None
-        context_text = "\n\n".join(
-            f"[{i}] {c.title}\n{c.content}" for i, c in enumerate(ordered_chunks, 1)
-        )
-        if authority is not None:
-            context_text = (
-                "[Zuständige Stelle laut Behördenfinder (PVOG)]\n"
-                f"{authority.context_block()}\n\n{context_text}"
-            )
+        source_list = SourceList(ordered_chunks, authority)
 
         # End-of-message directives bind harder than system-prompt rules for
         # this model (same reason language_directive lives here): the offer
@@ -505,15 +471,8 @@ class RAGPipeline:
             "number out in words or as Chinese/Korean numerals (NOT 五百六十三, "
             "百分之六十, 六十七歲). Arabic and Persian answers may use their own digits.",
         ]
-        if ordered_chunks:
-            directives.append(
-                "End with one last line exactly in the form 'QUELLEN: 1, 3' naming "
-                "the numbers of the context blocks [n] your answer draws on; the "
-                "Behördenfinder block has no number and is never listed. Write "
-                "'QUELLEN: -' if you used none. Keep the word QUELLEN on that line "
-                "in every answer language, and never put block numbers like [1] "
-                "in the answer text itself."
-            )
+        if source_list.directive():
+            directives.append(source_list.directive())
         if plan.kind is Kind.CHITCHAT:
             directives.append(
                 "Die Nachricht ist reiner Small Talk (Begrüßung, Dank oder "
@@ -555,7 +514,7 @@ class RAGPipeline:
             *history_messages,
             {
                 "role": "user",
-                "content": f"Kontext:\n{context_text}\n\nFrage: {plan.message}\n\n"
+                "content": f"Kontext:\n{source_list.context_text()}\n\nFrage: {plan.message}\n\n"
                 + "\n".join(directives),
             },
         ]
@@ -565,9 +524,10 @@ class RAGPipeline:
             **reasoning_kwargs(ANSWER_REASONING_EFFORT),
         )
         raw_answer = completion.choices[0].message.content or ""
-        answer, used = split_used_sources(raw_answer) if ordered_chunks else (raw_answer, None)
+        answer = source_list.answer_text(raw_answer)
 
         leak = FORBIDDEN_SCRIPTS.search(answer or "")
+        retry_answer = None
         if leak:
             # One corrective retry; if the model leaks again, ship the retry
             # anyway — a rare stray word beats an error.
@@ -586,41 +546,5 @@ class RAGPipeline:
                     },
                 ],
             )
-            answer, retry_used = split_used_sources(retry.choices[0].message.content or "")
-            # A rewrite for language often drops the QUELLEN line; the blocks
-            # the first answer drew on are still the ones it used.
-            if retry_used is not None:
-                used = retry_used
-
-        # Several of the top-K chunks often come from the same (long) page —
-        # fine for the context, but the visible source list should name each
-        # page once, in retrieval order. Titles dedupe too: arbeitsagentur.de
-        # syndicates the same article under per-Ort URLs.
-        sources = []
-        seen_urls: set[str] = set()
-        seen_titles: set[str] = set()
-        for i, c in enumerate(ordered_chunks, 1):
-            if used is not None and i not in used:
-                continue
-            # Normalized title: syndicated copies differ by stray whitespace
-            # ("Schulabschluss:  Was" vs "Schulabschluss: Was").
-            title_key = " ".join((c.title or "").split()).lower()
-            if c.url in seen_urls or (title_key and title_key in seen_titles):
-                continue
-            seen_urls.add(c.url)
-            if title_key:
-                seen_titles.add(title_key)
-            sources.append({"title": c.title, "url": c.url})
-        if ordered_chunks:
-            # Shows in Railway logs how often the model skips the QUELLEN line
-            # (then every retrieved page is listed) and how much it filters.
-            listed = "missing" if used is None else sorted(used)
-            print(
-                f"[sources] QUELLEN {listed} of {len(ordered_chunks)} blocks -> {len(sources)} pages",
-                file=sys.stderr,
-            )
-        if authority is not None:
-            authority_source = authority.source()
-            sources = [s for s in sources if s["url"] != authority_source["url"]]
-            sources.insert(0, authority_source)
-        return answer, sources
+            retry_answer = retry.choices[0].message.content or ""
+        return source_list.resolve(raw_answer, retry_reply=retry_answer)
