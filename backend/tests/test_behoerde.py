@@ -17,6 +17,8 @@ from behoerde import (
 
 BERLIN_DEEP_ARS = "110010001001"
 BERLIN_CITY_ARS = "110000000000"
+MUENCHEN_ARS = "091620000000"
+HAMBURG_ARS = "020000000000"
 
 
 def make_finder(handler) -> BehoerdeFinder:
@@ -151,6 +153,52 @@ class TestFind:
         assert result is not None
         assert result.authority_name == "Jugendamt Treptow-Köpenick - Elterngeldstelle"
 
+    def test_hamburg_stadtteil_picks_its_bezirks_office(self):
+        # 20095 resolves to the city ARS only, with Stadtteile as quoted
+        # names; offices are titled by Bezirk. The first unit PVOG lists
+        # (Altona) used to win for a Hamburg-Mitte address.
+        def handler(request):
+            path = request.url.path
+            if path.endswith("/v3/locations/details"):
+                return httpx.Response(200, json=[
+                    {"ars": HAMBURG_ARS, "plz": "20038", "name": "Hamburg, Freie und Hansestadt"},
+                    {"ars": HAMBURG_ARS, "plz": "20095", "name": "Hamburg 'Hamburg-Altstadt'"},
+                    {"ars": HAMBURG_ARS, "plz": "20095", "name": "Hamburg 'St. Georg'"},
+                ])
+            if "/v7/servicedescriptions/" in path:
+                content = [{
+                    "id": "L2.LB.1",
+                    "name": "Sozialhilfe, Grundsicherung im Alter und bei dauerhafter Erwerbsminderung beantragen",
+                    "ars": [HAMBURG_ARS],
+                }]
+                return httpx.Response(200, json={"serviceDescriptions": {"content": content}})
+            if path.endswith("/v2/organisationunits/titles"):
+                return httpx.Response(200, json=[
+                    {"id": "L2.OE.1", "title": "Bezirksamt Altona - Soziales Dienstleistungszentrum Altona - Grundsicherung", "role": {"code": "03"}},
+                    {"id": "L2.OE.2", "title": "Bezirksamt Eimsbüttel - Fachamt Grundsicherung und Soziales", "role": {"code": "03"}},
+                    {"id": "L2.OE.3", "title": "Bezirksamt Hamburg-Mitte - Fachamt Grundsicherung und Soziales", "role": {"code": "03"}},
+                ])
+            if path.endswith("/v5/organisationunits/detail"):
+                titles = {
+                    "L2.OE.1": "Bezirksamt Altona - Soziales Dienstleistungszentrum Altona - Grundsicherung",
+                    "L2.OE.2": "Bezirksamt Eimsbüttel - Fachamt Grundsicherung und Soziales",
+                    "L2.OE.3": "Bezirksamt Hamburg-Mitte - Fachamt Grundsicherung und Soziales",
+                }
+                return httpx.Response(200, json={
+                    "title": titles[request.url.params.get("q")],
+                    "location": {
+                        "addresses": [{"type": "Hausanschrift", "street": "Teststr. 3", "zip": "20095", "city": "Hamburg"}],
+                        "communications": [],
+                    },
+                    "internetAddresses": [],
+                })
+            raise AssertionError(path)
+
+        finder = make_finder(handler)
+        result = finder.find("20095", "Wo beantrage ich Grundsicherung im Alter?", topic="rente")
+        assert result is not None
+        assert result.authority_name == "Bezirksamt Hamburg-Mitte - Fachamt Grundsicherung und Soziales"
+
     def test_federal_hotline_is_fallback_when_no_local_data(self):
         def handler(request):
             path = request.url.path
@@ -217,6 +265,47 @@ class TestRelevanceGuard:
         finder = make_finder(self.unrelated_stub(queries))
         assert finder.find("10115", "Wo ist das Amt?", topic="allgemein") is None
         assert queries == []
+
+    def test_word_buried_inside_a_title_word_is_no_match(self):
+        # "Wann kann ich in Rente gehen?" in München: the Rentenversicherung
+        # has no address in PVOG, and a local row for "gehen" used to beat
+        # it — "Veranstaltungsraum; Anzeige einer vorübergehenden
+        # Verwendung", Landeshauptstadt München, Marienplatz 8.
+        def handler(request):
+            path = request.url.path
+            if path.endswith("/v3/locations/details"):
+                return httpx.Response(200, json=[{"ars": MUENCHEN_ARS, "plz": "80331", "name": "München"}])
+            if "/v7/servicedescriptions/" in path:
+                if "rente" in request.url.params.get("q").lower():
+                    content = [{"id": "B1.LB.3", "name": "Regelaltersrente beantragen", "ars": ["000000000000"]}]
+                else:
+                    content = [{
+                        "id": "L3.LB.1",
+                        "name": "Veranstaltungsraum; Anzeige einer vorübergehenden Verwendung",
+                        "ars": [MUENCHEN_ARS],
+                    }]
+                return httpx.Response(200, json={"serviceDescriptions": {"content": content}})
+            if path.endswith("/v2/organisationunits/titles"):
+                lb_id = request.url.params.get("lbId")
+                return httpx.Response(200, json=[{"id": lb_id + ".OE", "title": "x", "role": {"code": "01"}}])
+            if path.endswith("/v5/organisationunits/detail"):
+                if request.url.params.get("q") == "L3.LB.1.OE":
+                    return httpx.Response(200, json={
+                        "title": "Landeshauptstadt München",
+                        "location": {"addresses": [{"type": "Hausanschrift", "street": "Marienplatz 8", "zip": "80331", "city": "München"}]},
+                        "internetAddresses": [],
+                    })
+                return httpx.Response(200, json={
+                    "title": "Auskunfts- und Beratungsstellenfinder der Deutschen Rentenversicherung",
+                    "location": {},
+                    "internetAddresses": [{"uri": "https://www.deutsche-rentenversicherung.de"}],
+                })
+            raise AssertionError(path)
+
+        finder = make_finder(handler)
+        result = finder.find("80331", "Wann kann ich in Rente gehen?", topic="rente")
+        assert result is not None
+        assert result.authority_name == "Auskunfts- und Beratungsstellenfinder der Deutschen Rentenversicherung"
 
     def test_searches_the_key_word_on_its_own_too(self):
         # PVOG's ranking is thrown off by the words around the service name:
@@ -293,10 +382,14 @@ class TestTopicQueries:
 
     def test_plain_rente_question_keeps_topic_queries_first(self):
         queries = BehoerdeFinder()._queries_for("Wann kann ich in Rente gehen?", "rente")
-        assert queries[0] == "Altersrente beantragen"
+        # "Altersrente beantragen" ranked the Landwirtschaftliche
+        # Alterskasse (SVLFG, Kassel) first for a Berlin PLZ.
+        assert queries[0] == "Regelaltersrente beantragen"
+        # "gehen" is no service — it must not be searched on its own.
+        assert "gehen" not in queries
         # Erwerbsminderungsrente is the Rentenversicherung's, not the Sozialamt's.
         queries = BehoerdeFinder()._queries_for("Erwerbsminderungsrente beantragen", "rente")
-        assert queries[0] == "Altersrente beantragen"
+        assert queries[0] == "Regelaltersrente beantragen"
 
 
 class TestHelpers:
@@ -311,9 +404,15 @@ class TestHelpers:
         # Berlin only the ARS table counts.
         assert _district_of({"ars": "110000000000", "name": "Berlin 'Kol. Einigkeit'"}) is None
 
-    def test_district_of_falls_back_to_quoted_name_outside_berlin(self):
-        assert _district_of({"ars": "020000000000", "name": "Hamburg 'Altona'"}) == "Altona"
+    def test_district_of_falls_back_to_quoted_name_outside_city_states(self):
+        assert _district_of({"ars": "091620000000", "name": "München 'Altstadt-Lehel'"}) == "Altstadt-Lehel"
         assert _district_of({"ars": "091620000000", "name": "München"}) is None
+
+    def test_district_of_maps_hamburg_stadtteil_to_bezirk(self):
+        assert _district_of({"ars": "020000000000", "name": "Hamburg 'Hammerbrook'"}) == "Hamburg-Mitte"
+        assert _district_of({"ars": "020000000000", "name": "Hamburg 'Ottensen'"}) == "Altona"
+        assert _district_of({"ars": "020000000000", "name": "Hamburg 'Kleingartenanlage'"}) is None
+        assert _district_of({"ars": "020000000000", "name": "Hamburg, Freie und Hansestadt"}) is None
 
     def test_strip_stopwords(self):
         assert strip_stopwords("Wo kann ich meine Wohnung anmelden?") == "Wohnung anmelden"
@@ -338,6 +437,14 @@ class TestHelpers:
         assert is_relevant("Wohngeld - Mietzuschuss beantragen", key_terms("Wohngeld"))
         assert not is_relevant("Arbeitslos melden", key_terms("melde Wohnsitz"))
         assert not is_relevant("Kindergeld beantragen", [])
+
+    def test_is_relevant_needs_the_term_at_a_word_edge(self):
+        # Compound parts sit at the start or end of a word ("Altersrente",
+        # "Rentenbezug"); a hit in the middle is a coincidence.
+        assert is_relevant("Altersrente für langjährig Versicherte", ["Rente"])
+        assert is_relevant("Rentenbezug der Künstlersozialkasse melden", ["Rente"])
+        assert not is_relevant("Eine Kennnummer für Betriebe zur Haltung von Legehennen beantragen", ["gehen"])
+        assert not is_relevant("Veranstaltungsraum; Anzeige einer vorübergehenden Verwendung", ["gehen"])
 
     def test_is_federal(self):
         assert _is_federal({"ars": ["000000000000"]})

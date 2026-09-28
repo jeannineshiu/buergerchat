@@ -29,7 +29,9 @@ TOPIC_QUERIES = {
     "kindergeld": ["Kindergeld beantragen"],
     "arbeitslos": ["Arbeitslosengeld beantragen"],
     "familie-und-kinder": ["Elterngeld beantragen", "Unterhaltsvorschuss beantragen"],
-    "rente": ["Altersrente beantragen", "Rente beantragen"],
+    # "Altersrente beantragen" ranks the Landwirtschaftliche Alterskasse's
+    # rows first; "Regelaltersrente beantragen" is the Rentenversicherung's.
+    "rente": ["Regelaltersrente beantragen", "Rente beantragen"],
     "wohngeld": ["Wohngeld beantragen"],
     "steuern": ["Steuerliche Identifikationsnummer"],
     "aufenthalt": ["Aufenthaltserlaubnis beantragen", "Aufenthaltstitel"],
@@ -59,6 +61,8 @@ STOPWORDS = {
     "der", "die", "das", "ein", "eine", "einen", "einem", "einer",
     "und", "oder", "in", "an", "bei", "für", "zu", "nach", "von",
     "ist", "sind", "sich", "es", "denn", "bitte", "hier",
+    "gehen", "bekomme", "bekommen", "brauche", "brauchen", "finde", "finden",
+    "gibt", "habe", "haben", "bin",
 }
 
 # Max organisation units whose detail we fetch while looking for an address.
@@ -72,9 +76,11 @@ MAX_DETAIL_LOOKUPS = 4
 # Leistung it came from actually mentions what was searched for.
 #
 # The test is the query's most specific word: PVOG titles are verbose
-# ("Wohngeld - Mietzuschuss beantragen"), so a substring match on the
-# longest content word is both forgiving of German compounds and strict
-# enough to reject an unrelated service. Generic service vocabulary is
+# ("Wohngeld - Mietzuschuss beantragen"), so the longest content word must
+# begin or end a word of the title — forgiving of German compounds
+# ("Altersrente", "Rentenbezug") and strict enough to reject an unrelated
+# service. A plain substring match let "gehen" hit "Legehennen" and
+# "vorübergehenden". Generic service vocabulary is
 # dropped first — otherwise "Wo beantrage ich Wohngeld?" would match
 # every "… beantragen" row in the register.
 # Stems are matched against already-folded text, so no umlauts here.
@@ -113,17 +119,71 @@ BERLIN_BEZIRKE = {
 }
 DISTRICT_PATTERN = re.compile(r"'([^']+)'")
 
+# Hamburg has the same city-level registration, but every PLZ resolves to
+# the city ARS (020000000000) and the quoted name is the Stadtteil
+# ("Hamburg 'Hammerbrook'"), while office titles name the Bezirk
+# ("Bezirksamt Hamburg-Mitte - …"). Stadtteil → Bezirk per the
+# Bezirksverwaltungsgesetz; spellings as PVOG's location names give them.
+HAMBURG_LAND_ARS = "02"
+HAMBURG_BEZIRKE = {
+    "Hamburg-Mitte": (
+        "Hamburg-Altstadt", "HafenCity", "Neustadt", "St. Pauli", "St. Georg",
+        "Hammerbrook", "Borgfelde", "Hamm", "Horn", "Billstedt", "Billbrook",
+        "Rothenburgsort", "Veddel", "Wilhelmsburg", "Kleiner Grasbrook",
+        "Steinwerder", "Waltershof", "Finkenwerder", "Neuwerk",
+    ),
+    "Altona": (
+        "Altona-Altstadt", "Sternschanze", "Altona-Nord", "Ottensen", "Bahrenfeld",
+        "Groß Flottbek", "Othmarschen", "Lurup", "Osdorf", "Nienstedten",
+        "Blankenese", "Iserbrook", "Sülldorf", "Rissen",
+    ),
+    "Eimsbüttel": (
+        "Eimsbüttel", "Rotherbaum", "Harvestehude", "Hoheluft-West", "Lokstedt",
+        "Niendorf", "Schnelsen", "Eidelstedt", "Stellingen",
+    ),
+    "Hamburg-Nord": (
+        "Hoheluft-Ost", "Eppendorf", "Groß Borstel", "Alsterdorf", "Winterhude",
+        "Uhlenhorst", "Hohenfelde", "Barmbek-Süd", "Dulsberg", "Barmbek-Nord",
+        "Ohlsdorf", "Fuhlsbüttel", "Langenhorn",
+    ),
+    "Wandsbek": (
+        "Eilbek", "Wandsbek", "Marienthal", "Jenfeld", "Tonndorf", "Farmsen-Berne",
+        "Bramfeld", "Steilshoop", "Wellingsbüttel", "Sasel", "Poppenbüttel",
+        "Hummelsbüttel", "Lemsahl-Mellingstedt", "Duvenstedt", "Wohldorf-Ohlstedt",
+        "Bergstedt", "Volksdorf", "Rahlstedt",
+    ),
+    "Bergedorf": (
+        "Lohbrügge", "Bergedorf", "Curslack", "Altengamme", "Neuengamme",
+        "Kirchwerder", "Ochsenwerder", "Reitbrook", "Allermöhe", "Billwerder",
+        "Moorfleet", "Tatenberg", "Spadenland", "Neuallermöhe",
+    ),
+    "Harburg": (
+        "Harburg", "Neuland", "Gut Moor", "Wilstorf", "Rönneburg", "Langenbek",
+        "Sinstorf", "Marmstorf", "Eißendorf", "Heimfeld", "Moorburg",
+        "Altenwerder", "Hausbruch", "Neugraben-Fischbek", "Francop",
+        "Neuenfelde", "Cranz",
+    ),
+}
+HAMBURG_STADTTEILE = {
+    stadtteil: bezirk
+    for bezirk, stadtteile in HAMBURG_BEZIRKE.items()
+    for stadtteil in stadtteile
+}
+
 
 def _district_of(location: dict) -> str | None:
     ars = location.get("ars") or ""
+    match = DISTRICT_PATTERN.search(location.get("name") or "")
+    quoted = match.group(1) if match else None
     if ars.startswith(BERLIN_LAND_ARS):
         # In Berlin only the ARS table is trustworthy — the quoted name
         # is an Ortsteil ("Kol. Einigkeit"), never an office title.
         if len(ars) == 12:
             return BERLIN_BEZIRKE.get(ars[3:5])
         return None
-    match = DISTRICT_PATTERN.search(location.get("name") or "")
-    return match.group(1) if match else None
+    if ars.startswith(HAMBURG_LAND_ARS):
+        return HAMBURG_STADTTEILE.get(quoted or "")
+    return quoted
 
 FALLBACK_SOURCE_URL = "https://servicesuche.bund.de/"
 
@@ -170,8 +230,12 @@ def key_terms(query: str) -> list[str]:
 def is_relevant(leistung_name: str, terms: list[str]) -> bool:
     if not terms:
         return False
-    name = _normalize(leistung_name)
-    return any(_normalize(term) in name for term in terms)
+    words = _WORD_SPLIT.split(_normalize(leistung_name))
+    return any(
+        word.startswith(term) or word.endswith(term)
+        for term in map(_normalize, terms)
+        for word in words
+    )
 
 
 @dataclass
