@@ -63,27 +63,28 @@ Topic selection follows the documented demand of migration counseling services (
 ## How it works
 
 ```
-┌──────────┐   POST /chat    ┌─────────────────────────────────────────┐
-│ Next.js  │ ──────────────► │ FastAPI backend                         │
-│ chat UI  │                 │  1. topic + intent routing (rule-based) │
-└──────────┘                 │  2. FAISS retrieval + rerank (36k)      │
-                             │  3. live PVOG authority lookup (by PLZ) │
-     ▲                       │  4. answer via LLM, grounded + cited    │
-     │ sources, feedback     └─────────────────────────────────────────┘
-     ▼                                        ▲
-┌──────────┐    build_index   ┌───────────────┐
-│ feedback │                  │ crawlers      │  sitemap/BFS, robots-
-│ (SQLite) │                  │ (7 portals +  │  compliant, incremental
-└──────────┘                  │  laws + BA)   │
-                              └───────────────┘
+┌──────────────┐ /api/chat  ┌─────────────┐  POST /chat   ┌─────────────────────────────────────────┐
+│ Browser      │ ─────────► │ Next.js     │ ────────────► │ FastAPI backend                         │
+│ (chat UI)    │ same-origin│ /api proxy  │ private net   │  1. topic + intent routing (rule-based) │
+└──────────────┘            └─────────────┘               │  2. FAISS retrieval + rerank (36k)      │
+                                                          │  3. live PVOG authority lookup (by PLZ) │
+                                                          │  4. answer via LLM, grounded + cited    │
+                                                          └─────────────────────────────────────────┘
+                                                               ▲ build_index          │ feedback
+                                                   ┌───────────────┐            ┌──────────┐
+                                  sitemap/BFS,     │ crawlers      │            │ feedback │
+                                  robots-compliant,│ (7 portals +  │            │ (SQLite) │
+                                  incremental      │  laws + BA)   │            └──────────┘
+                                                   └───────────────┘
 ```
 
-- **Frontend**: Next.js (App Router, Tailwind), markdown-rendered answers, RTL support, per-message 👍/👎 and per-session star feedback
+- **Frontend**: Next.js (App Router, Tailwind), markdown-rendered answers, RTL support, per-message 👍/👎 and per-session star feedback. The browser only talks to the frontend's same-origin `/api` proxy, which forwards to the backend over Railway's private network
 - **Backend**: FastAPI + FAISS (cosine over `text-embedding-3-small`) + OpenAI chat model (`gpt-5.5`, override via `CHAT_MODEL`)
 - **Reranking** (`RERANK=1`, on in production): the vector search widens to 30 candidates and an LLM appends up to 3 extra picks *after* the untouched top-5. Union, not swap — swapping was zero-sum, the union took golden retrieval recall to 100% in all three eval languages, at one extra chat call per query
+- **Multilingual routing**: router keywords are German, so non-German messages are routed (and, except English, retrieved) on their German translation — the corpus is 100% German
 - **Authority finder**: live queries against the public PVOG Suchdienst API (PLZ → ARS → service → responsible organisation unit)
 - **Crawlers**: sitemap-driven (or restricted BFS), honor robots.txt including per-site crawl delays, re-runnable incrementally
-- **Deployment**: two Docker services on Railway; index artifacts live on a volume (`/data`), shipped by the weekly crawl via `scripts/ship-index.sh` (upload, swap, redeploy)
+- **Deployment**: two Docker services on Railway; index artifacts live on a volume (`/data`), shipped by the weekly crawl via `scripts/ship-index.sh` (upload, swap, redeploy; `RESTORE=prev` rolls back)
 
 ## Getting started (local)
 
@@ -95,30 +96,34 @@ conda create -n buergerchat python=3.11 -y
 conda activate buergerchat
 pip install -r backend/requirements.txt -r crawler/requirements.txt
 
-# 2. Build the knowledge base (or copy an existing data/ directory)
+# 2. Build the knowledge base — or skip the crawl and pull the latest
+#    published index with scripts/download-index.sh (needs gh auth login)
 cd crawler
 python arbeitsagentur_crawler.py   # ~45 min
 python gesetze_crawler.py          # seconds
 python portal_crawler.py           # ~2-2.5 h (robots crawl-delays)
-python build_index.py              # chunk + embed + write data/
+python build_index.py              # chunk + embed + write data/ (paid: OpenAI embeddings)
 
 # 3. Backend
 cd ../backend
 cp .env.example .env               # add OPENAI_API_KEY
-uvicorn main:app --reload          # http://localhost:8000
+uvicorn main:app --reload          # http://localhost:8000 (boots without data/: /health "degraded", /chat 503)
 
 # 4. Frontend
 cd ../frontend
 npm install
-npm run dev                        # http://localhost:3000
+npm run dev                        # http://localhost:3000 (its /api proxy expects the backend on :8000; BACKEND_URL overrides)
 ```
+
+Tests run offline (OpenAI, FAISS and PVOG are stubbed): `cd backend && python -m pytest tests/` (needs `requirements-dev.txt`), `cd crawler && python -m pytest tests/`, `cd frontend && npm test`.
 
 ## API
 
 | Endpoint | Description |
 |---|---|
-| `POST /chat` | `{message, language, history[]}` → `{answer, sources[], topic}`; 503 while the index is missing |
+| `POST /chat` | `{message, language, history[]}` → `{answer, sources[], topic}`; 503 while the index is missing or once the daily OpenAI budget is spent (`daily_budget_exhausted`); 429 past the per-IP rate limit |
 | `GET /health` | `{status: ok\|degraded, index: loaded\|missing}` — always 200 |
+| `GET /health/model` | asks OpenAI whether every model `/chat` needs still exists for this key (free: the models endpoint isn't billed); 503 if not |
 | `POST /feedback/message` | 👍/👎 + optional comment per answer |
 | `POST /feedback/session` | 1–5 stars per conversation |
 
@@ -132,15 +137,16 @@ npm run dev                        # http://localhost:3000
 
 **Correctness**
 
-- **Golden-question evals** (`backend/evals/`): 19 questions with corpus-verified expected facts, each phrased in all 13 answer languages. `python evals/run_evals.py` measures retrieval recall@5 for de/en/zh-Hant (embedding cost only; `--languages all` covers the other ten); `--answers` adds full answer checks (facts, cited source, answer language). Run before/after every prompt, model, chunking or crawl change.
-- **Offline test suites**: 96 backend + 41 crawler + 21 frontend tests run without network or API keys (OpenAI, FAISS and PVOG are stubbed).
+- **Golden-question evals** (`backend/evals/`): 19 questions with corpus-verified expected facts, each phrased in all 13 answer languages. `python evals/run_evals.py` prints the plan and a cost estimate; `--yes` runs it (capped by `--max-usd`, default $1). It measures retrieval recall@5 for de/en/zh-Hant (embedding cost only; `--languages all` covers the other ten); `--answers` adds full answer checks (facts, cited source, answer language). Run before/after every prompt, model, chunking or crawl change.
+- **Offline test suites**: 194 backend + 54 crawler + 48 frontend tests run without network or API keys (OpenAI, FAISS and PVOG are stubbed).
 - **CI on every push/PR** (`.github/workflows/ci.yml`): lint (ruff / eslint) + tests + `npm run build` (doubles as a typecheck) for all three modules, independently. Nothing merges on faith — the checks are the same ones described above, just automatic.
-- **Daily production smoke test** (`scripts/smoke_test.py`, triggered by `.github/workflows/smoke-test.yml`): asks the deployed app two real questions through the frontend's `/api` proxy (the path a browser takes) and checks the answer, the sources and the routed topic. `/health` only knows whether the index loaded — when OpenAI deprecated the answer model, every `/chat` call returned 500 while `/health` still reported `ok`. A monitor that never reaches the LLM would not have noticed.
-- **Weekly re-crawl on GitHub Actions** (`.github/workflows/weekly-crawl.yml`, Sundays): crawls incrementally (state carried over as the previous run's `crawl-state` artifact), rebuilds the index and publishes it as the `index` artifact; `scripts/download-index.sh` pulls the latest index locally. Benefit amounts change every January — the eval baseline already caught the corpus drifting (Kindergeld 255 € in the 2025 crawl vs 259 € in 2026).
+- **Production smoke test** (`scripts/smoke_test.py`, triggered by `.github/workflows/smoke-test.yml`), through the frontend's `/api` proxy (the path a browser takes). `/health` only knows whether the index loaded — when OpenAI deprecated the answer model, every `/chat` call returned 500 while `/health` still reported `ok`. So the **daily free mode** also checks `/health/model` (is every model still there for this key — $0), and the **full mode** (Mondays and after every index ship, ~$0.10) asks two real questions and checks the answer, the sources and the routed topic.
+- **Weekly re-crawl on GitHub Actions** (`.github/workflows/weekly-crawl.yml`, Sundays): crawls incrementally (state carried over as the previous run's `crawl-state` artifact), rebuilds the index and publishes it as the `index` artifact. If the build changed, the run ships it to production (`scripts/ship-index.sh`) and runs the full smoke test; `ship-index.yml` re-ships a run whose ship step failed, and `scripts/download-index.sh` pulls an index locally. Benefit amounts change every January — the eval baseline already caught the corpus drifting (Kindergeld 255 € in the 2025 crawl vs 259 € in 2026).
 
 **Cost & reliability**
 
-- **Chit-chat and meta-question short-circuits** (`backend/router.py`): pure small talk ("hi", "danke", "bye" — no actual question, matched in all 13 languages) and capability questions ("what can you do?") skip retrieval entirely instead of burning an embedding call + top-5 FAISS search on a message that was never going to use them.
+- **Daily spend cap** (`backend/budget.py`): every OpenAI response is costed into `usage.db`; once the UTC day's total reaches `DAILY_BUDGET_USD` (default $0.50), `/chat` answers 503 `daily_budget_exhausted` until midnight UTC, and the UI tells the user to come back tomorrow. Per-IP limits (10/minute, `CHAT_DAILY_LIMIT`/day) stop one visitor from spending it alone.
+- **Chit-chat and meta-question short-circuits** (`backend/router.py`, `backend/turn_plan.py`): pure small talk ("hi", "danke", "bye" — no actual question, matched in all 13 languages) and capability questions ("what can you do?") skip retrieval entirely instead of burning an embedding call + top-5 FAISS search on a message that was never going to use them.
 - **Ingestion-time deduplication** (`crawler/build_index.py`): syndicated pages (arbeitsagentur.de republishes the same article per Ort) produce byte-identical chunks; these are dropped by content hash before embedding, not just at display time.
 - **Rate limiting with a documented scaling gap**: per-IP limits via slowapi default to in-process memory, which is correct for today's single Railway replica but would silently multiply every limit if a second replica were added. An opt-in `RATELIMIT_STORAGE_URI` (Redis) makes shared counting a config change, not a code change — main.py warns at startup if it looks like production without it set.
 
