@@ -32,6 +32,9 @@ def make_finder(handler) -> BehoerdeFinder:
 
 
 def pvog_stub(request: httpx.Request) -> httpx.Response:
+    # Berlin as PVOG listed it until mid-2026: a city-level Bürgergeld
+    # Leistung with the Bezirk Jobcenter attached. Live PVOG no longer has
+    # it (#50), so a passing test here does not mean Berlin works live.
     path = request.url.path
     params = request.url.params
 
@@ -330,6 +333,80 @@ class TestFind:
         handler = self._border_plz_handler(local_at={"010620000000"})
         result = make_finder(handler).find("22113", "Wo ist mein Jobcenter?", topic="buergergeld")
         assert result.authority_name == "Jobcenter Kreis Stormarn"
+
+    @staticmethod
+    def _federal_only_handler(locations, service="Grundsicherungsgeld beantragen", leistung_ars="000000000000"):
+        # PVOG as it answers Berlin and Schleswig-Holstein since the
+        # Grundsicherungsgeld rename: only a federal row, whose one unit is
+        # the BA hotline — a phone number, no address.
+        def handler(request):
+            path = request.url.path
+            if path.endswith("/v3/locations/details"):
+                return httpx.Response(200, json=locations)
+            if "/v7/servicedescriptions/" in path:
+                content = [{"id": "B5.LB.1", "name": service, "ars": [leistung_ars]}]
+                return httpx.Response(200, json={"serviceDescriptions": {"content": content}})
+            if path.endswith("/v2/organisationunits/titles"):
+                return httpx.Response(200, json=[
+                    {"id": "B5.OE.1", "title": "Bundesagentur für Arbeit (BA), Arbeitnehmer-Hotline", "role": {"code": "02"}},
+                ])
+            if path.endswith("/v5/organisationunits/detail"):
+                return httpx.Response(200, json={
+                    "title": "Bundesagentur für Arbeit (BA), Arbeitnehmer-Hotline",
+                    "location": {"addresses": [], "communications": [{"code": "02", "value": "+49 800 4555500"}]},
+                    "internetAddresses": [],
+                })
+            raise AssertionError(path)
+
+        return handler
+
+    def test_berlin_jobcenter_from_the_bezirk_when_pvog_has_none(self):
+        handler = self._federal_only_handler([
+            {"ars": BERLIN_CITY_ARS, "plz": "10178", "name": "Berlin, Stadt"},
+            {"ars": "110010001001", "plz": "10115", "name": "Berlin 'Mitte'"},
+        ])
+        result = make_finder(handler).find("10115", "Wo ist mein Jobcenter?", topic="buergergeld")
+        assert result.authority_name == "Jobcenter Berlin Mitte"
+        assert result.website == "https://www.berlin.de/jobcenter-mitte/"
+        assert result.street is None
+
+        handler = self._federal_only_handler([
+            {"ars": "110090009009", "plz": "12435", "name": "Berlin 'Alt-Treptow'"},
+        ])
+        result = make_finder(handler).find("12435", "Wo beantrage ich Bürgergeld?", topic="buergergeld")
+        assert result.website == "https://www.berlin.de/jobcenter-treptow-koepenick/"
+
+    def test_berlin_plz_across_two_bezirke_gets_the_ba_search(self):
+        # 12157 spans Tempelhof-Schöneberg and Steglitz-Zehlendorf: naming
+        # one Jobcenter would be a coin toss, the BA search knows the PLZ.
+        handler = self._federal_only_handler([
+            {"ars": "110070007007", "plz": "12157", "name": "Berlin 'Schöneberg'"},
+            {"ars": "110060006006", "plz": "12157", "name": "Berlin 'Steglitz'"},
+        ])
+        result = make_finder(handler).find("12157", "Wo ist mein Jobcenter?", topic="buergergeld")
+        assert result.website == "https://web.arbeitsagentur.de/portal/dienststellensuche/dienststellen?plz=12157"
+
+    def test_jobcenter_question_gets_the_ba_search_instead_of_the_hotline(self):
+        # Federal row, or SH's own Land-level row that lists only the hotline.
+        for leistung_ars in ["000000000000", "010000000000"]:
+            handler = self._federal_only_handler(
+                [{"ars": "010620009009", "plz": "22885", "name": "Barsbüttel"}],
+                leistung_ars=leistung_ars,
+            )
+            result = make_finder(handler).find("22885", "Wo ist mein Jobcenter?", topic="buergergeld")
+            assert result.website == "https://web.arbeitsagentur.de/portal/dienststellensuche/dienststellen?plz=22885"
+            assert "Jobcenter" in result.authority_name
+            assert result.source()["url"] == result.website
+
+    def test_other_services_keep_pvogs_hotline(self):
+        # Only the Jobcenter has a stand-in; a Kindergeld question keeps
+        # what PVOG found.
+        handler = self._federal_only_handler(
+            [{"ars": "010620009009", "plz": "22885", "name": "Barsbüttel"}],
+            service="Kindergeld beantragen",
+        )
+        result = make_finder(handler).find("22885", "Wo beantrage ich Kindergeld?", topic="kindergeld")
+        assert result.authority_name == "Bundesagentur für Arbeit (BA), Arbeitnehmer-Hotline"
 
     def test_hamburg_billstedt_standort_depends_on_the_plz(self):
         # 22115 belongs to Standort Mümmelmannsberg; its 22113/22117 cases

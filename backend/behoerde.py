@@ -132,6 +132,18 @@ BERLIN_BEZIRKE = {
 }
 DISTRICT_PATTERN = re.compile(r"'([^']+)'")
 
+# PVOG lost Berlin's local Bürgergeld Leistung in the Grundsicherungsgeld
+# rename (#50) and Schleswig-Holstein lists only the BA hotline, so a
+# Jobcenter question can come back with a phone number and nothing local.
+# Berlin runs exactly one Jobcenter per Bezirk, each with a page at
+# berlin.de/jobcenter-<bezirk>/ — no street, since several (Mitte) have
+# more than one Standort. Everywhere else, the BA's own Dienststellensuche
+# takes the PLZ in its URL and lists the Jobcenter with addresses.
+BERLIN_JOBCENTER_URL = "https://www.berlin.de/jobcenter-{slug}/"
+BA_DIENSTSTELLEN_URL = "https://web.arbeitsagentur.de/portal/dienststellensuche/dienststellen?plz={plz}"
+JOBCENTER_SERVICE = "Grundsicherungsgeld (Bürgergeld) beantragen"
+JOBCENTER_TOPIC = "buergergeld"
+
 # Hamburg has the same city-level registration, but every PLZ resolves to
 # the city ARS (020000000000) and the quoted name is the Stadtteil
 # ("Hamburg 'Hammerbrook'"), while office titles name the Bezirk
@@ -291,6 +303,24 @@ def _match_candidates(location: dict) -> list[str]:
     return candidates
 
 
+def _jobcenter_stand_in(plz: str, ars: str, districts: list[str]) -> "BehoerdeResult":
+    """Where PVOG knows no local Jobcenter: Berlin's Bezirk Jobcenter, or
+    the BA's Dienststellensuche for this PLZ."""
+    bezirke = [d for d in districts if d in BERLIN_BEZIRKE.values()]
+    if ars.startswith(BERLIN_LAND_ARS) and len(bezirke) == 1:
+        slug = bezirke[0].lower().translate(_UMLAUTS)
+        return BehoerdeResult(
+            authority_name=f"Jobcenter Berlin {bezirke[0]}",
+            service_name=JOBCENTER_SERVICE,
+            website=BERLIN_JOBCENTER_URL.format(slug=slug),
+        )
+    return BehoerdeResult(
+        authority_name="Jobcenter-Suche der Bundesagentur für Arbeit",
+        service_name=f"{JOBCENTER_SERVICE} — zuständiges Jobcenter für PLZ {plz} mit Adresse",
+        website=BA_DIENSTSTELLEN_URL.format(plz=plz),
+    )
+
+
 def _match_rank(title: str, candidates: list[str]) -> int:
     # Index of the first candidate the title names; no match sorts last.
     return next(
@@ -425,6 +455,7 @@ class BehoerdeFinder:
     def _find(self, plz: str, query: str, topic: str | None) -> BehoerdeResult | None:
         queries = self._queries_for(query, topic)
         fallback: BehoerdeResult | None = None
+        local_fallback = False
         ars_candidates, districts = self._candidate_ars(plz)
 
         # Zuständigkeit data can hang at any ARS level (Berlin registers at
@@ -450,10 +481,24 @@ class BehoerdeFinder:
                 if result and result.street:
                     return result
                 if fallback is None:
+                    local_fallback = result is not None
                     fallback = result or self._best_authority(
                         ars, [l for l in leistungen if _is_federal(l)][:2], districts
                     )
+        # A local unit without a street still beats the stand-in if it has
+        # its own website — but not when it is just a phone number: SH's
+        # Land-level Grundsicherungsgeld row lists only the BA hotline.
+        keep_local = local_fallback and fallback is not None and fallback.website
+        if ars_candidates and not keep_local and self._asks_for_jobcenter(query, topic):
+            return _jobcenter_stand_in(plz, ars_candidates[0], districts)
         return fallback
+
+    @staticmethod
+    def _asks_for_jobcenter(query: str, topic: str | None) -> bool:
+        lowered = query.lower()
+        if any(pattern.search(lowered) for pattern, _ in SERVICE_QUERIES):
+            return False
+        return topic == JOBCENTER_TOPIC or "jobcenter" in lowered
 
     def _candidate_ars(self, plz: str) -> tuple[list[str], list[str]]:
         locations = self._get("/v3/locations/details", {"plz": plz, "limit": 10}).json()
