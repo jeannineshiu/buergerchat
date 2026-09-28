@@ -264,6 +264,73 @@ class TestFind:
         result = make_finder(niendorf).find("22455", "Wo ist mein Jobcenter?", topic="buergergeld")
         assert result.authority_name == "Jobcenter team.arbeit.hamburg - Standort Lokstedt"
 
+    def _border_plz_handler(self, local_at):
+        # 22113 as live PVOG lists it: mostly Hamburg Stadtteile on the
+        # city ARS, plus Oststeinbek (Schleswig-Holstein) on a Gemeinde
+        # ARS — deeper than Hamburg's, so it used to decide the Land alone.
+        oststeinbek = "010620053053"
+        units = {
+            HAMBURG_ARS: ("L4.OE.1", "Jobcenter team.arbeit.hamburg - Standort Billstedt"),
+            "010620000000": ("L4.OE.2", "Jobcenter Kreis Stormarn"),
+        }
+
+        def handler(request):
+            path = request.url.path
+            params = request.url.params
+            if path.endswith("/v3/locations/details"):
+                return httpx.Response(200, json=[
+                    {"ars": HAMBURG_ARS, "plz": "20038", "name": "Hamburg, Freie und Hansestadt"},
+                    {"ars": oststeinbek, "plz": "22113", "name": "Oststeinbek"},
+                    {"ars": HAMBURG_ARS, "plz": "22113", "name": "Hamburg 'Billstedt'"},
+                    {"ars": HAMBURG_ARS, "plz": "22113", "name": "Hamburg 'Horn'"},
+                    {"ars": oststeinbek, "plz": "22113", "name": "Oststeinbek 'Havighorst'"},
+                    {"ars": HAMBURG_ARS, "plz": "22113", "name": "Hamburg 'Moorfleet'"},
+                ])
+            if "/v7/servicedescriptions/" in path:
+                ars = path.rsplit("/", 1)[1]
+                content = [{"id": "B4.LB.1", "name": "Bürgergeld beantragen", "ars": ["000000000000"]}]
+                if ars in local_at:
+                    content.append({"id": f"L4.LB.{ars}", "name": "Bürgergeld beantragen", "ars": [ars]})
+                return httpx.Response(200, json={"serviceDescriptions": {"content": content}})
+            if path.endswith("/v2/organisationunits/titles"):
+                lb_id = params.get("lbId")
+                if lb_id == "B4.LB.1":
+                    return httpx.Response(200, json=[{"id": "B4.OE.9", "title": "BA Hotline", "role": {"code": "03"}}])
+                oe_id, title = units[lb_id.rsplit(".", 1)[1]]
+                return httpx.Response(200, json=[{"id": oe_id, "title": title, "role": {"code": "03"}}])
+            if path.endswith("/v5/organisationunits/detail"):
+                titles = {oe: t for oe, t in units.values()}
+                oe_id = params.get("q")
+                if oe_id not in titles:
+                    return httpx.Response(200, json={
+                        "title": "BA Hotline",
+                        "location": {"addresses": [], "communications": [{"code": "02", "value": "0800 4 5555 00"}]},
+                        "internetAddresses": [],
+                    })
+                return httpx.Response(200, json={
+                    "title": titles[oe_id],
+                    "location": {
+                        "addresses": [{"type": "Hausanschrift", "street": "Teststr. 5", "zip": "22113", "city": "Hamburg"}],
+                        "communications": [],
+                    },
+                    "internetAddresses": [],
+                })
+            raise AssertionError(path)
+
+        return handler
+
+    def test_plz_across_a_land_border_searches_the_majority_land_first(self):
+        # Both sides have a Jobcenter; 4 of 5 locations are Hamburg.
+        handler = self._border_plz_handler(local_at={HAMBURG_ARS, "010620000000"})
+        result = make_finder(handler).find("22113", "Wo ist mein Jobcenter?", topic="buergergeld")
+        assert result.authority_name == "Jobcenter team.arbeit.hamburg - Standort Billstedt"
+
+    def test_plz_across_a_land_border_still_searches_the_other_land(self):
+        # Nothing local in Hamburg: the Stormarn Jobcenter beats the hotline.
+        handler = self._border_plz_handler(local_at={"010620000000"})
+        result = make_finder(handler).find("22113", "Wo ist mein Jobcenter?", topic="buergergeld")
+        assert result.authority_name == "Jobcenter Kreis Stormarn"
+
     def test_hamburg_billstedt_standort_depends_on_the_plz(self):
         # 22115 belongs to Standort Mümmelmannsberg; its 22113/22117 cases
         # are served at Standort Billstedt's address for now.

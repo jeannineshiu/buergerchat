@@ -466,13 +466,21 @@ class BehoerdeFinder:
         # cross Bezirke (12157 spans Tempelhof-Schöneberg AND
         # Steglitz-Zehlendorf) — so walk from the most specific ARS but
         # keep EVERY district the PLZ touches as a match candidate.
-        location = max(pool, key=lambda loc: len((loc.get("ars") or "").rstrip("0")))
-        ars = location.get("ars")
-        if not ars:
-            return [], []
+        # A PLZ can also cross a Land border (22113 is mostly Hamburg plus
+        # Oststeinbek in Schleswig-Holstein, whose Gemeinde ARS is deeper
+        # than Hamburg's city ARS), so ARS depth must not pick the Land:
+        # walk every Land's chain, the one most locations lie in first.
+        by_land: dict[str, list[dict]] = {}
+        for loc in pool:
+            if loc.get("ars"):
+                by_land.setdefault(loc["ars"][:2], []).append(loc)
+        candidates = []
+        for locs in sorted(by_land.values(), key=len, reverse=True):
+            location = max(locs, key=lambda loc: len(loc["ars"].rstrip("0")))
+            ars = location["ars"]
+            # ARS layout: Land(2) Reg.-Bezirk(1) Kreis(2) Verband(4) Gemeinde(3).
+            candidates += [ars, ars[:5] + "0" * 7, ars[:2] + "0" * 10]
         districts = list(dict.fromkeys(c for loc in pool for c in _match_candidates(loc)))
-        # ARS layout: Land(2) Reg.-Bezirk(1) Kreis(2) Verband(4) Gemeinde(3).
-        candidates = [ars, ars[:5] + "0" * 7, ars[:2] + "0" * 10]
         return list(dict.fromkeys(candidates)), districts
 
     def _search_leistungen(self, ars: str, query: str) -> list[dict]:
