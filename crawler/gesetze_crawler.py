@@ -39,6 +39,8 @@ OUTPUT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output",
 REQUEST_TIMEOUT = 15.0
 SLEEP_MIN = 1.0
 SLEEP_MAX = 2.0
+FETCH_ATTEMPTS = 3
+RETRY_BACKOFF = 30.0  # seconds, doubled per retry
 
 # (law code, base index URL, Gesamtausgabe filename, topic)
 LAWS = [
@@ -55,10 +57,18 @@ LAWS = [
 
 
 def fetch_law_html(client: httpx.Client, base_url: str, filename: str) -> str:
-    response = client.get(base_url + filename)
-    response.raise_for_status()
-    response.encoding = "iso-8859-1"
-    return response.text
+    for attempt in range(FETCH_ATTEMPTS):
+        try:
+            response = client.get(base_url + filename)
+            response.raise_for_status()
+            response.encoding = "iso-8859-1"
+            return response.text
+        except httpx.HTTPError as exc:
+            if attempt == FETCH_ATTEMPTS - 1:
+                raise
+            delay = RETRY_BACKOFF * 2 ** attempt
+            print(f"[retry] {base_url + filename}: {exc} — again in {delay:.0f}s")
+            time.sleep(delay)
 
 
 # SGB VI carries 21 Anlagen; all but these three are conversion tables for
@@ -193,24 +203,57 @@ def extract_sections(html: str, law_code: str, page_url: str, topic: str) -> lis
     return records
 
 
+def load_previous(output_path: str) -> dict[str, list[dict]]:
+    """Last run's records, grouped by law page URL (the record URL minus its #anchor)."""
+    previous: dict[str, list[dict]] = {}
+    if not os.path.exists(output_path):
+        return previous
+    with open(output_path, encoding="utf-8") as f:
+        for line in f:
+            record = json.loads(line)
+            previous.setdefault(record["url"].split("#")[0], []).append(record)
+    return previous
+
+
 def crawl(output_path: str) -> None:
+    """Re-crawl every law and replace output_path with the result.
+
+    A law whose page can't be fetched keeps last run's sections, so a
+    transient outage never drops a law from the index. Without previous
+    sections to fall back on the crawl fails and output_path is left as is.
+    Writing goes to a temp file renamed at the end, so a crash never leaves
+    a truncated file behind as crawl state.
+    """
     headers = {"User-Agent": USER_AGENT}
+    previous = load_previous(output_path)
     total_written = 0
+    missing = []
+    tmp_path = output_path + ".tmp"
 
     with httpx.Client(headers=headers, timeout=REQUEST_TIMEOUT, follow_redirects=True) as client, \
-            open(output_path, "w", encoding="utf-8") as out_file:
+            open(tmp_path, "w", encoding="utf-8") as out_file:
         for law_code, base_url, filename, topic in LAWS:
             page_url = base_url + filename
-            html = fetch_law_html(client, base_url, filename)
-            sections = extract_sections(html, law_code, page_url, topic)
+            try:
+                html = fetch_law_html(client, base_url, filename)
+            except httpx.HTTPError as exc:
+                sections = previous.get(page_url, [])
+                print(f"[error] {law_code}: {exc} — keeping {len(sections)} sections from last run")
+                if not sections:
+                    missing.append(law_code)
+            else:
+                sections = extract_sections(html, law_code, page_url, topic)
+                print(f"{law_code}: {len(sections)} sections saved ({page_url})")
 
             for record in sections:
                 out_file.write(json.dumps(record, ensure_ascii=False) + "\n")
             total_written += len(sections)
-
-            print(f"{law_code}: {len(sections)} sections saved ({page_url})")
             time.sleep(random.uniform(SLEEP_MIN, SLEEP_MAX))
 
+    if missing:
+        os.remove(tmp_path)
+        raise SystemExit(f"no sections for {', '.join(missing)} — {output_path} left unchanged")
+    os.replace(tmp_path, output_path)
     print(f"done: {total_written} sections saved across {len(LAWS)} laws")
 
 

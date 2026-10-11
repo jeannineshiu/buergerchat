@@ -1,3 +1,7 @@
+import json
+
+import httpx
+import pytest
 from bs4 import BeautifulSoup
 
 import gesetze_crawler
@@ -132,3 +136,43 @@ class TestExtractSections:
         assert anlage["url"] == "https://example.de/sgb_12/x.html#anlage28"
         assert anlage["topic"] == "rente"
         assert anlage["law"] == "Zwölftes Buch Sozialgesetzbuch"
+
+
+class TestCrawl:
+    LAW_A = ("SGB XII", "https://example.de/a/", "a.html", "rente")
+    LAW_B = ("SGB II", "https://example.de/b/", "b.html", "buergergeld")
+
+    def run(self, monkeypatch, tmp_path, down: set[str], previous: list[dict] | None = None):
+        def fake_fetch(client, base_url, filename):
+            if base_url + filename in down:
+                raise httpx.ConnectTimeout("timed out")
+            return LAW_HTML
+
+        monkeypatch.setattr(gesetze_crawler, "LAWS", [self.LAW_A, self.LAW_B])
+        monkeypatch.setattr(gesetze_crawler, "fetch_law_html", fake_fetch)
+        monkeypatch.setattr(gesetze_crawler.time, "sleep", lambda s: None)
+        out = tmp_path / "gesetze.jsonl"
+        if previous is not None:
+            out.write_text("".join(json.dumps(r) + "\n" for r in previous), encoding="utf-8")
+        return out
+
+    def read(self, out):
+        return [json.loads(line) for line in out.read_text(encoding="utf-8").splitlines()]
+
+    def test_unreachable_law_keeps_last_runs_sections(self, monkeypatch, tmp_path):
+        old = {"url": "https://example.de/b/b.html#j1", "title": "SGB II § 7 alt", "content": "x",
+               "topic": "buergergeld", "crawled_at": "2026-10-04T00:00:00+00:00", "law": "SGB II"}
+        out = self.run(monkeypatch, tmp_path, down={"https://example.de/b/b.html"}, previous=[old])
+        gesetze_crawler.crawl(str(out))
+        records = self.read(out)
+        assert old in records
+        assert any(r["url"].startswith("https://example.de/a/a.html") for r in records)
+
+    def test_unreachable_law_without_fallback_leaves_the_file_untouched(self, monkeypatch, tmp_path):
+        old = {"url": "https://example.de/a/a.html#j1", "title": "t", "content": "x",
+               "topic": "rente", "crawled_at": "2026-10-04T00:00:00+00:00", "law": "SGB XII"}
+        out = self.run(monkeypatch, tmp_path, down={"https://example.de/b/b.html"}, previous=[old])
+        with pytest.raises(SystemExit):
+            gesetze_crawler.crawl(str(out))
+        assert self.read(out) == [old]
+        assert not (tmp_path / "gesetze.jsonl.tmp").exists()
