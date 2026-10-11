@@ -238,7 +238,7 @@ def crawl(output_path: str) -> None:
                 html = fetch_law_html(client, base_url, filename)
             except httpx.HTTPError as exc:
                 sections = previous.get(page_url, [])
-                print(f"[error] {law_code}: {exc} — keeping {len(sections)} sections from last run")
+                print(f"::warning::{law_code}: {exc} — keeping {len(sections)} sections from last run")
                 if not sections:
                     missing.append(law_code)
             else:

@@ -169,8 +169,14 @@ def main() -> None:
     os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
 
     headers = {"User-Agent": USER_AGENT}
-    with httpx.Client(headers=headers, timeout=REQUEST_TIMEOUT, follow_redirects=True) as client:
-        all_urls = fetch_sitemap_urls(client, SITEMAP_URL)
+    try:
+        with httpx.Client(headers=headers, timeout=REQUEST_TIMEOUT, follow_redirects=True) as client:
+            all_urls = fetch_sitemap_urls(client, SITEMAP_URL)
+    except (httpx.HTTPError, ElementTree.ParseError) as exc:
+        # Nothing has been written yet, so the crawl state is untouched;
+        # skipping a week beats sinking the other crawlers and the ship.
+        print(f"::warning::arbeitsagentur sitemap unavailable, skipped this run: {exc}")
+        return
 
     all_urls = [u for u in all_urls if urlparse(u).netloc == BASE_HOST]
     relevant_urls = [u for u in all_urls if classify_topic(u) is not None]

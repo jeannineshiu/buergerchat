@@ -44,6 +44,10 @@ USER_AGENT = "BuergerChat-Bot/1.0 (educational project)"
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output")
 
 REQUEST_TIMEOUT = 20.0
+# 429 handling: wait Retry-After (or the default), capped, at most this often.
+RATE_LIMIT_RETRIES = 2
+RATE_LIMIT_DEFAULT_WAIT = 60.0
+RATE_LIMIT_MAX_WAIT = 300.0
 MIN_CONTENT_CHARS = 200
 XML_NS = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
 
@@ -271,9 +275,23 @@ def sleep(site: Site) -> None:
     time.sleep(site.crawl_delay * random.uniform(0.9, 1.2))
 
 
+def retry_after_seconds(response: httpx.Response) -> float:
+    try:
+        wait = float(response.headers.get("retry-after", ""))
+    except ValueError:  # absent, or an HTTP date — not worth parsing
+        wait = RATE_LIMIT_DEFAULT_WAIT
+    return min(max(wait, 1.0), RATE_LIMIT_MAX_WAIT)
+
+
 def fetch_page(client: httpx.Client, url: str) -> str | None:
     try:
-        response = client.get(url)
+        for attempt in range(RATE_LIMIT_RETRIES + 1):
+            response = client.get(url)
+            if response.status_code != 429 or attempt == RATE_LIMIT_RETRIES:
+                break
+            wait = retry_after_seconds(response)
+            print(f"[429] {url}: waiting {wait:.0f}s", file=sys.stderr)
+            time.sleep(wait)
         response.raise_for_status()
     except httpx.HTTPError as exc:
         print(f"[error] {url}: {exc}", file=sys.stderr)
@@ -324,6 +342,11 @@ def crawl_bfs_site(client: httpx.Client, site: Site, out_file, done: set[str], l
         if limit and written >= limit:
             break
         url, depth = queue.pop(0)
+        # An already-saved page at max depth has nothing left to give: its
+        # links won't be followed. Without this skip, berlin re-fetched all
+        # ~1100 detail pages every week and ran into 429s.
+        if url in done and depth >= site.bfs_max_depth:
+            continue
         html = fetch_page(client, url)
         sleep(site)
         if html is None:
@@ -370,13 +393,21 @@ def main() -> None:
         output_path = os.path.join(OUTPUT_DIR, f"portal_{site.name}.jsonl")
         done = load_crawled_urls(output_path)
 
-        with httpx.Client(
-            headers={"User-Agent": USER_AGENT}, timeout=REQUEST_TIMEOUT, follow_redirects=True
-        ) as client, open(output_path, "a", encoding="utf-8") as out_file:
-            if site.sitemap_url:
-                written = crawl_sitemap_site(client, site, out_file, done, limit)
-            else:
-                written = crawl_bfs_site(client, site, out_file, done, limit)
+        # Output is append-only crawl state, so a site that fails mid-run
+        # loses nothing: the records already written stay, and next week
+        # picks up the rest. One unreachable site must not sink the others.
+        try:
+            with httpx.Client(
+                headers={"User-Agent": USER_AGENT}, timeout=REQUEST_TIMEOUT, follow_redirects=True
+            ) as client, open(output_path, "a", encoding="utf-8") as out_file:
+                if site.sitemap_url:
+                    written = crawl_sitemap_site(client, site, out_file, done, limit)
+                else:
+                    written = crawl_bfs_site(client, site, out_file, done, limit)
+        except (httpx.HTTPError, ElementTree.ParseError) as exc:
+            # ::warning:: surfaces on the GitHub run summary.
+            print(f"::warning::[{site.name}] crawl aborted, skipped this run: {exc}")
+            continue
         print(f"[{site.name}] done: {written} new records ({len(done)} already crawled)")
 
 

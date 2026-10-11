@@ -1,3 +1,6 @@
+import httpx
+
+import arbeitsagentur_crawler
 from arbeitsagentur_crawler import classify_topic, extract_page
 
 # Shaped like a real arbeitsagentur.de press release (checked 2026-09-22):
@@ -57,3 +60,16 @@ class TestClassifyTopic:
 
     def test_unrelated_pages_are_skipped(self):
         assert classify_topic("https://www.arbeitsagentur.de/unternehmen/personalfragen") is None
+
+
+def test_unreachable_sitemap_skips_the_run_without_touching_state(monkeypatch, tmp_path, capsys):
+    def down(client, url):
+        raise httpx.ConnectTimeout("timed out")
+
+    output = tmp_path / "arbeitsagentur.jsonl"
+    output.write_text('{"url": "https://www.arbeitsagentur.de/x"}\n', encoding="utf-8")
+    monkeypatch.setattr(arbeitsagentur_crawler, "fetch_sitemap_urls", down)
+    monkeypatch.setattr(arbeitsagentur_crawler, "OUTPUT_PATH", str(output))
+    arbeitsagentur_crawler.main()
+    assert output.read_text(encoding="utf-8") == '{"url": "https://www.arbeitsagentur.de/x"}\n'
+    assert "::warning::" in capsys.readouterr().out
